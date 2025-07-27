@@ -89,6 +89,7 @@ export default function Home() {
 
   const [isRenaming, setIsRenaming] = React.useState(false);
   const [renameValue, setRenameValue] = React.useState("");
+  const [isInfoTooltipOpen, setIsInfoTooltipOpen] = React.useState(false);
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
@@ -216,6 +217,10 @@ export default function Home() {
         );
         setNotes(updatedNotes);
         localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
+
+        // Show tooltip on update
+        setIsInfoTooltipOpen(true);
+        setTimeout(() => setIsInfoTooltipOpen(false), 2000);
 
       } catch (error) {
         console.error("Failed to save note to local storage", error);
@@ -493,7 +498,7 @@ export default function Home() {
   };
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={100}>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
         <div className="absolute top-4 left-4 right-4 h-8 flex justify-between items-center z-10">
            <div className="flex-1"></div>
@@ -533,7 +538,7 @@ export default function Home() {
            </div>
            <div className="flex-1 flex justify-end">
              {activeNote && (
-               <Tooltip>
+               <Tooltip open={isInfoTooltipOpen} onOpenChange={setIsInfoTooltipOpen}>
                  <TooltipTrigger asChild>
                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                       <Info className="w-4 h-4" />
@@ -789,5 +794,7 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
 
     
