@@ -17,10 +17,20 @@ import {
   Minus,
   Palette,
   Pilcrow,
+  MoreVertical,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -53,9 +63,27 @@ export default function Home() {
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = React.useState(false);
   const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
+  const [theme, setTheme] = React.useState('light');
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  
+  // Theme management
+  React.useEffect(() => {
+    const storedTheme = localStorage.getItem("tabula-theme") || 'light';
+    setTheme(storedTheme);
+    document.documentElement.classList.toggle("dark", storedTheme === "dark");
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "light" ? "dark" : "light";
+    setTheme(newTheme);
+    localStorage.setItem("tabula-theme", newTheme);
+    document.documentElement.classList.toggle("dark", newTheme === "dark");
+     toast({
+      title: `Switched to ${newTheme.charAt(0).toUpperCase() + newTheme.slice(1)} Mode`,
+    });
+  };
 
   const checkActiveFormats = React.useCallback(() => {
     if (typeof window === 'undefined' || !window.document || !editorRef.current) return;
@@ -140,7 +168,7 @@ export default function Home() {
   const handleInsertChecklist = React.useCallback(() => {
     const checklistHtml = `
       <div class="flex items-center my-2 checklist-item">
-        <input type="checkbox" class="mr-2 w-4 h-4" />
+        <input type="checkbox" class="mr-2 w-5 h-5" />
         <div class="flex-grow" contenteditable="true">&nbsp;</div>
       </div>
     `;
@@ -460,14 +488,6 @@ export default function Home() {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={handleExport} aria-label="Export note">
-                  <Download className="w-5 h-5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Export as .txt (Ctrl+S)</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={handleSummarize} aria-label="Summarize note with AI">
                   <Sparkles className="w-5 h-5" />
                 </Button>
@@ -475,8 +495,6 @@ export default function Home() {
               <TooltipContent>AI Summarize</TooltipContent>
             </Tooltip>
             
-            <Separator orientation="vertical" className="h-6 mx-1" />
-
             <AlertDialog>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -503,6 +521,33 @@ export default function Home() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            
+            <Separator orientation="vertical" className="h-6 mx-1" />
+
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="More options">
+                      <MoreVertical className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>More</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleExport}>
+                  <Download className="w-4 h-4 mr-2" />
+                  <span>Export as .txt</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={toggleTheme}>
+                  {theme === 'light' ? <Moon className="w-4 h-4 mr-2" /> : <Sun className="w-4 h-4 mr-2" />}
+                  <span>{theme === 'light' ? 'Dark' : 'Light'} Mode</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
           </CardContent>
         </Card>
 
@@ -538,5 +583,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    
