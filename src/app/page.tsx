@@ -2,6 +2,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from 'next/dynamic';
 import { format } from "date-fns";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -109,6 +110,11 @@ const Pencil = (props: React.SVGProps<SVGSVGElement>) => (
 const Info = (props: React.SVGProps<SVGSVGElement>) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
 );
+
+const LazyToolbar = dynamic(() => import('@/components/toolbar').then(mod => mod.Toolbar), {
+  ssr: false,
+  loading: () => <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 h-[52px]" />, // Placeholder with same height
+});
 
 type Note = {
   id: string;
@@ -655,195 +661,20 @@ export default function Home() {
           </div>
         )}
 
-        {isLoaded && (
-            <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <CardContent className="p-2 flex flex-wrap items-center gap-1">
-                <DropdownMenu>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="My Notes">
-                        <Folder className="w-5 h-5" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>My Notes</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuLabel>My Notes</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuGroup>
-                        {notes.sort((a,b) => b.lastUpdatedAt - a.lastUpdatedAt).map(note => (
-                            <DropdownMenuItem 
-                                key={note.id} 
-                                onClick={() => setActiveNoteId(note.id)}
-                                className={cn("flex justify-between", note.id === activeNoteId && "bg-muted")}
-                            >
-                                <span>{note.name}</span>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                        <Button variant="ghost" size="icon" className="h-6 w-6 opacity-50 hover:opacity-100"><Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" /></Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete "{note.name}"?</AlertDialogTitle>
-                                            <AlertDialogDescription>
-                                            This action cannot be undone. This will permanently delete this note.
-                                            </AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id); }} className="bg-destructive hover:bg-destructive/90">
-                                            Delete
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </DropdownMenuItem>
-                        ))}
-                    </DropdownMenuGroup>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleCreateNewNote}>
-                    <FilePlus2 className="w-4 h-4 mr-2" />
-                    <span>New Note</span>
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-                </DropdownMenu>
-
-                <Separator orientation="vertical" className="h-8 mx-1" />
-
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold" className={cn(activeFormats.bold && "bg-muted")}>
-                    <Bold className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Bold (Ctrl+B)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("italic")} aria-label="Italic" className={cn(activeFormats.italic && "bg-muted")}>
-                    <Italic className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Italic (Ctrl+I)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("underline")} aria-label="Underline" className={cn(activeFormats.underline && "bg-muted")}>
-                    <Underline className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Underline (Ctrl+U)</TooltipContent>
-                </Tooltip>
-                <Popover>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                    <PopoverTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="Text Color">
-                        <Palette className="w-5 h-5" />
-                        </Button>
-                    </PopoverTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>Text Color</TooltipContent>
-                </Tooltip>
-                <PopoverContent className="w-auto p-2">
-                    <input type="color" onChange={(e) => handleFormat("foreColor", e.target.value)} className="w-8 h-8" />
-                </PopoverContent>
-                </Popover>
-
-                <Separator orientation="vertical" className="h-8 mx-1" />
-                
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<p>")} aria-label="Normal Text" className={cn(activeFormats.p && "bg-muted")}>
-                    <Pilcrow className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Normal Text (Ctrl+Alt+0)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h1>")} aria-label="Heading 1" className={cn(activeFormats.h1 && "bg-muted")}>
-                    <Heading1 className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Heading 1 (Ctrl+Alt+1)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h2>")} aria-label="Heading 2" className={cn(activeFormats.h2 && "bg-muted")}>
-                    <Heading2 className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Heading 2 (Ctrl+Alt+2)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h3>")} aria-label="Heading 3" className={cn(activeFormats.h3 && "bg-muted")}>
-                    <Heading3 className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Heading 3 (Ctrl+Alt+3)</TooltipContent>
-                </Tooltip>
-                
-                <Separator orientation="vertical" className="h-8 mx-1" />
-                
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleInsertChecklist} aria-label="Insert Checklist">
-                    <ListTodo className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Checklist (Ctrl+Shift+C)</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => handleFormat("insertHorizontalRule")} aria-label="Insert Horizontal Line">
-                    <Minus className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>Horizontal Line</TooltipContent>
-                </Tooltip>
-                
-                <Separator orientation="vertical" className="h-8 mx-1" />
-
-                <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={handleSummarize} aria-label="Summarize note with AI">
-                    <Sparkles className="w-5 h-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent>AI Summarize</TooltipContent>
-                </Tooltip>
-                
-                <DropdownMenu>
-                <Tooltip>
-                    <TooltipTrigger asChild>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" aria-label="More options">
-                        <MoreVertical className="w-5 h-5" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    </TooltipTrigger>
-                    <TooltipContent>More</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleExport}>
-                    <Download className="w-4 h-4 mr-2" />
-                    <span>Export as .txt</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={toggleTheme}>
-                    {theme === 'light' ? <Moon className="w-4 h-4 mr-2" /> : <Sun className="w-4 h-4 mr-2" />}
-                    <span>{theme === 'light' ? 'Dark' : 'Light'} Mode</span>
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-                </DropdownMenu>
-
-            </CardContent>
-            </Card>
-        )}
+        {isLoaded && <LazyToolbar {...{
+          notes,
+          activeNoteId,
+          activeFormats,
+          theme,
+          setActiveNoteId,
+          handleCreateNewNote,
+          handleDeleteNote,
+          handleFormat,
+          handleInsertChecklist,
+          handleSummarize,
+          handleExport,
+          toggleTheme,
+        }} />}
 
         <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
           <DialogContent className="sm:max-w-md">
