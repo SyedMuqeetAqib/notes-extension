@@ -145,10 +145,10 @@ export function Toolbar({
                             onClick={() => setActiveNoteId(note.id)}
                             className={cn("flex justify-between", note.id === activeNoteId && "bg-muted")}
                         >
-                            <span>{note.name}</span>
+                            <span className="truncate pr-2">{note.name}</span>
                             <AlertDialog>
                                 <AlertDialogTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-50 hover:opacity-100"><Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" /></Button>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-50 hover:opacity-100 flex-shrink-0"><Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" /></Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                     <AlertDialogHeader>
