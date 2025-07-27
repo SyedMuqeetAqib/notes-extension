@@ -24,6 +24,7 @@ import {
   FileText,
   Folder,
   Pencil,
+  Info,
 } from "lucide-react";
 import { format } from "date-fns";
 import { summarizeNote } from "@/ai/flows/summarize-note";
@@ -494,44 +495,61 @@ export default function Home() {
   return (
     <TooltipProvider>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
-        <div className="absolute top-4 left-0 right-0 px-4 flex flex-col justify-center items-center z-10 group">
-          {activeNote && (
-            <>
-              <div className="text-xs text-muted-foreground mb-2 flex gap-4">
-                  <span>Created: {formatDate(activeNote.createdAt)}</span>
-                  <span>Updated: {formatDate(activeNote.lastUpdatedAt)}</span>
-              </div>
-              {isRenaming ? (
-                <Input
-                  ref={renameInputRef}
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onBlur={handleRenameSubmit}
-                  onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
-                  className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
-                  style={{ width: `${(renameValue.length * 10) + 40}px`, minWidth: '100px' }}
-                />
-              ) : (
-                <div className="flex items-center gap-2">
-                  <h1 
-                    onClick={handleStartRename} 
-                    className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                  >
-                    {activeNote.name}
-                  </h1>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={handleStartRename} 
-                    className="h-6 w-6 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </Button>
-                </div>
+        <div className="absolute top-4 left-4 right-4 h-8 flex justify-between items-center z-10">
+           <div className="flex-1"></div>
+           <div className="flex-1 flex justify-center items-center group">
+              {activeNote && (
+                 <>
+                   {isRenaming ? (
+                     <Input
+                       ref={renameInputRef}
+                       value={renameValue}
+                       onChange={(e) => setRenameValue(e.target.value)}
+                       onBlur={handleRenameSubmit}
+                       onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+                       className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
+                       style={{ width: `${(renameValue.length * 10) + 40}px`, minWidth: '100px' }}
+                     />
+                   ) : (
+                     <div className="flex items-center gap-2">
+                       <h1 
+                         onClick={handleStartRename} 
+                         className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                       >
+                         {activeNote.name}
+                       </h1>
+                       <Button 
+                         variant="ghost" 
+                         size="icon" 
+                         onClick={handleStartRename} 
+                         className="h-6 w-6 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
+                       >
+                         <Pencil className="w-4 h-4" />
+                       </Button>
+                     </div>
+                   )}
+                 </>
               )}
-            </>
-          )}
+           </div>
+           <div className="flex-1 flex justify-end">
+             {activeNote && (
+               <Tooltip>
+                 <TooltipTrigger asChild>
+                   <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
+                      <Info className="w-4 h-4" />
+                   </Button>
+                 </TooltipTrigger>
+                 <TooltipContent side="bottom" align="end">
+                   <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                      <span>Created: {formatDate(activeNote.createdAt)}</span>
+                      <span>Updated: {formatDate(activeNote.lastUpdatedAt)}</span>
+                   </div>
+                 </TooltipContent>
+               </Tooltip>
+             )}
+           </div>
         </div>
+
 
         <div className="absolute inset-0 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
           <div
@@ -539,7 +557,7 @@ export default function Home() {
             contentEditable={!isRenaming}
             onInput={handleInput}
             onKeyDown={handleEditorKeyDown}
-            className="w-full h-full min-h-screen pt-24 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+            className="w-full h-full min-h-screen pt-16 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
             suppressContentEditableWarning={true}
             style={{ caretColor: "hsl(var(--ring))" }}
             aria-label="Note editor"
