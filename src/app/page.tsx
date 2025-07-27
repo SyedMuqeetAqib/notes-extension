@@ -227,7 +227,10 @@ export default function Home() {
           if (parentElement.classList.contains('checklist-item')) {
             event.preventDefault();
             const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
-            (newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement).checked = false;
+            const checkbox = newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+            if (checkbox) {
+              checkbox.checked = false;
+            }
             // Clear the text content for the new item
             const contentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
             if(contentDiv) {
