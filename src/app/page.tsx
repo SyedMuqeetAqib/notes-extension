@@ -216,44 +216,56 @@ export default function Home() {
   };
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Enter') {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        const container = range.commonAncestorContainer;
-        let parentElement = container.nodeType === Node.ELEMENT_NODE ? container as Element : container.parentElement;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
 
-        while(parentElement && parentElement !== editorRef.current) {
-          if (parentElement.classList.contains('checklist-item')) {
-            event.preventDefault();
-            const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
-            const checkbox = newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-            if (checkbox) {
-              checkbox.checked = false;
-            }
-            // Clear the text content for the new item
-            const contentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
-            if(contentDiv) {
-              contentDiv.innerHTML = '&nbsp;';
-            }
+    const range = selection.getRangeAt(0);
+    const container = range.commonAncestorContainer;
+    let parentElement = container.nodeType === Node.ELEMENT_NODE ? container as Element : container.parentElement;
 
-            parentElement.insertAdjacentElement('afterend', newChecklistItem);
-            
-            // Move cursor to new checklist item
-            const newRange = document.createRange();
-            const newContentDiv = newChecklistItem.querySelector('.flex-grow');
-            if(newContentDiv) {
-              newRange.setStart(newContentDiv, 0);
-              newRange.collapse(true);
-              selection.removeAllRanges();
-              selection.addRange(newRange);
-            }
-
-            return;
+    while(parentElement && parentElement !== editorRef.current) {
+      if (parentElement.classList.contains('checklist-item')) {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
+          const checkbox = newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+          if (checkbox) {
+            checkbox.checked = false;
           }
-          parentElement = parentElement.parentElement;
+          const contentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
+          if(contentDiv) {
+            contentDiv.innerHTML = '&nbsp;';
+          }
+
+          parentElement.insertAdjacentElement('afterend', newChecklistItem);
+          
+          const newRange = document.createRange();
+          const newContentDiv = newChecklistItem.querySelector('.flex-grow');
+          if(newContentDiv) {
+            newRange.setStart(newContentDiv, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
+          return;
+        } else if (event.key === 'Backspace') {
+          const contentDiv = parentElement.querySelector('.flex-grow');
+          if (contentDiv && (contentDiv.textContent === '' || contentDiv.textContent === '\u00A0') && range.startOffset === 0) {
+            event.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            parentElement.replaceWith(p);
+            
+            const newRange = document.createRange();
+            newRange.setStart(p, 0);
+            newRange.collapse(true);
+            selection.removeAllRanges();
+            selection.addRange(newRange);
+          }
         }
+        return; 
       }
+      parentElement = parentElement.parentElement;
     }
   };
 
