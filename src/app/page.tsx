@@ -47,7 +47,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 
 export default function Home() {
-  const [note, setNote] = React.useState<string>("");
   const [isLoaded, setIsLoaded] = React.useState(false);
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
@@ -64,33 +63,33 @@ export default function Home() {
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
-
-    for (let i = 1; i <= 3; i++) {
-      // For headings, we check if the current selection is inside an h1, h2, etc.
-      let selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        let node = selection.getRangeAt(0).startContainer;
-        while(node.parentNode && node !== editorRef.current) {
-          if (node.nodeName.toLowerCase() === `h${i}`) {
-            newActiveFormats[`h${i}`] = true;
-            break;
-          }
-          node = node.parentNode;
+    
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+      let node = selection.getRangeAt(0).startContainer;
+      while (node && node !== editorRef.current) {
+        const nodeName = node.nodeName.toLowerCase();
+        if (nodeName.match(/^h[1-3]$/)) {
+          newActiveFormats[nodeName] = true;
         }
+        node = node.parentNode as HTMLElement;
       }
     }
     setActiveFormats(newActiveFormats);
   }, []);
 
-
   // Load note from local storage on mount
   React.useEffect(() => {
     try {
       const savedNote = localStorage.getItem("tabula-note");
-      setNote(savedNote || "<p><br></p>");
+      if (editorRef.current) {
+        editorRef.current.innerHTML = savedNote || "<p><br></p>";
+      }
     } catch (error) {
       console.error("Failed to load note from local storage", error);
-      setNote("<p><br></p>");
+      if (editorRef.current) {
+        editorRef.current.innerHTML = "<p><br></p>";
+      }
     }
     setIsLoaded(true);
   }, []);
@@ -103,25 +102,21 @@ export default function Home() {
         checkActiveFormats();
       };
       document.addEventListener("selectionchange", handler);
-      editor.addEventListener("input", handler);
       editor.addEventListener("click", handler);
       editor.addEventListener("keyup", handler);
       
       return () => {
         document.removeEventListener("selectionchange", handler);
-        editor.removeEventListener("input", handler);
         editor.removeEventListener("click", handler);
         editor.removeEventListener("keyup", handler);
       };
     }
   }, [isLoaded, checkActiveFormats]);
 
-  // Debounced save to local storage
-  React.useEffect(() => {
-    if (!isLoaded) return;
-    const handler = setTimeout(() => {
-      try {
-        localStorage.setItem("tabula-note", note);
+  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    const noteContent = e.currentTarget.innerHTML;
+     try {
+        localStorage.setItem("tabula-note", noteContent);
       } catch (error) {
         console.error("Failed to save note to local storage", error);
         toast({
@@ -130,12 +125,6 @@ export default function Home() {
           description: "Could not save your note to local storage.",
         });
       }
-    }, 500);
-    return () => clearTimeout(handler);
-  }, [note, isLoaded, toast]);
-
-  const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
-    setNote(e.currentTarget.innerHTML);
   };
 
   const handleFormat = (command: string, value?: string) => {
@@ -148,7 +137,7 @@ export default function Home() {
     const checklistHtml = `
       <div style="display: flex; align-items: center; margin-bottom: 8px;" contenteditable="false">
         <input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px;" />
-        <span contenteditable="true"></span>
+        <span contenteditable="true" style="width: 100%;"></span>
       </div>
     `;
     document.execCommand("insertHTML", false, checklistHtml);
@@ -211,11 +200,11 @@ export default function Home() {
   };
   
   const handleConfirmNewNote = () => {
-    setNote("<p><br></p>");
     if(editorRef.current) {
         editorRef.current.innerHTML = "<p><br></p>";
         editorRef.current.focus();
     }
+    localStorage.setItem("tabula-note", "<p><br></p>");
     toast({
       title: "New Note",
       description: "Ready for your thoughts!",
@@ -259,7 +248,6 @@ export default function Home() {
             contentEditable={true}
             onInput={handleInput}
             className="w-full h-full min-h-screen p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
-            dangerouslySetInnerHTML={{ __html: note }}
             suppressContentEditableWarning={true}
             style={{ caretColor: "hsl(var(--ring))" }}
             aria-label="Note editor"
@@ -442,5 +430,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    
