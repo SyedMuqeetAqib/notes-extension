@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -43,6 +44,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 export default function Home() {
   const [note, setNote] = React.useState<string>("");
@@ -50,9 +52,44 @@ export default function Home() {
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = React.useState(false);
+  const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const checkActiveFormats = React.useCallback(() => {
+    const newActiveFormats: Record<string, boolean> = {};
+    if (typeof window !== 'undefined' && window.document) {
+      newActiveFormats.bold = document.queryCommandState("bold");
+      newActiveFormats.italic = document.queryCommandState("italic");
+      newActiveFormats.underline = document.queryCommandState("underline");
+
+      for (let i = 1; i <= 3; i++) {
+        if (document.queryCommandValue("formatBlock") === `h${i}`) {
+          newActiveFormats[`h${i}`] = true;
+        }
+      }
+    }
+    setActiveFormats(newActiveFormats);
+  }, []);
+
+  React.useEffect(() => {
+    document.addEventListener("selectionchange", checkActiveFormats);
+    if(editorRef.current) {
+      editorRef.current.addEventListener("input", checkActiveFormats);
+      editorRef.current.addEventListener("click", checkActiveFormats);
+      editorRef.current.addEventListener("keyup", checkActiveFormats);
+    }
+
+    return () => {
+      document.removeEventListener("selectionchange", checkActiveFormats);
+      if(editorRef.current) {
+        editorRef.current.removeEventListener("input", checkActiveFormats);
+        editorRef.current.removeEventListener("click", checkActiveFormats);
+        editorRef.current.removeEventListener("keyup", checkActiveFormats);
+      }
+    };
+  }, [checkActiveFormats]);
 
   // Load note from local storage on mount
   React.useEffect(() => {
@@ -91,6 +128,7 @@ export default function Home() {
   const handleFormat = (command: string, value?: string) => {
     document.execCommand(command, false, value);
     editorRef.current?.focus();
+    checkActiveFormats();
   };
 
   const handleInsertChecklist = () => {
@@ -221,7 +259,7 @@ export default function Home() {
           <CardContent className="p-2 flex items-center flex-wrap gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold" className={cn(activeFormats.bold && "bg-muted")}>
                   <Bold className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -229,7 +267,7 @@ export default function Home() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("italic")} aria-label="Italic">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("italic")} aria-label="Italic" className={cn(activeFormats.italic && "bg-muted")}>
                   <Italic className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -237,7 +275,7 @@ export default function Home() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("underline")} aria-label="Underline">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("underline")} aria-label="Underline" className={cn(activeFormats.underline && "bg-muted")}>
                   <Underline className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -263,7 +301,7 @@ export default function Home() {
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h1>")} aria-label="Heading 1">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h1>")} aria-label="Heading 1" className={cn(activeFormats.h1 && "bg-muted")}>
                   <Heading1 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -271,7 +309,7 @@ export default function Home() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h2>")} aria-label="Heading 2">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h2>")} aria-label="Heading 2" className={cn(activeFormats.h2 && "bg-muted")}>
                   <Heading2 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -279,7 +317,7 @@ export default function Home() {
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h3>")} aria-label="Heading 3">
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h3>")} aria-label="Heading 3" className={cn(activeFormats.h3 && "bg-muted")}>
                   <Heading3 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
@@ -387,5 +425,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    
