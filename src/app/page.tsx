@@ -455,7 +455,7 @@ export default function Home() {
   return (
     <TooltipProvider>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
-        <div className="absolute top-0 left-0 right-0 p-4 flex justify-center">
+        <div className="absolute top-4 left-0 right-0 p-4 flex justify-center">
             {activeNote && (
                  <Dialog>
                     <DialogTrigger asChild>
@@ -497,7 +497,7 @@ export default function Home() {
             )}
         </div>
         
-        <div className="absolute inset-0 pt-16 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
+        <div className="absolute inset-0 pt-20 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
           <div
             ref={editorRef}
             contentEditable={true}
