@@ -389,7 +389,7 @@ export default function Home() {
         )}
 
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <CardContent className="p-2 flex items-center flex-wrap gap-1">
+          <CardContent className="p-2 flex flex-col items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold" className={cn(activeFormats.bold && "bg-muted")}>
@@ -430,7 +430,7 @@ export default function Home() {
               </PopoverContent>
             </Popover>
 
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation="horizontal" className="w-full my-1" />
             
             <Tooltip>
               <TooltipTrigger asChild>
@@ -465,7 +465,7 @@ export default function Home() {
               <TooltipContent>Heading 3 (Ctrl+Alt+3)</TooltipContent>
             </Tooltip>
             
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation="horizontal" className="w-full my-1" />
             
             <Tooltip>
               <TooltipTrigger asChild>
@@ -484,7 +484,7 @@ export default function Home() {
               <TooltipContent>Horizontal Line</TooltipContent>
             </Tooltip>
             
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation="horizontal" className="w-full my-1" />
 
             <Tooltip>
               <TooltipTrigger asChild>
@@ -522,7 +522,7 @@ export default function Home() {
               </AlertDialogContent>
             </AlertDialog>
             
-            <Separator orientation="vertical" className="h-6 mx-1" />
+            <Separator orientation="horizontal" className="w-full my-1" />
 
             <DropdownMenu>
               <Tooltip>
