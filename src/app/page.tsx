@@ -23,6 +23,7 @@ import {
   Trash2,
   FileText,
   Folder,
+  Pencil,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -46,7 +47,6 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -84,7 +84,11 @@ export default function Home() {
   const [notes, setNotes] = React.useState<Note[]>([]);
   const [activeNoteId, setActiveNoteId] = React.useState<string | null>(null);
 
+  const [isRenaming, setIsRenaming] = React.useState(false);
+  const [renameValue, setRenameValue] = React.useState("");
+
   const editorRef = React.useRef<HTMLDivElement>(null);
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   // Load notes index and set active note
@@ -327,6 +331,22 @@ export default function Home() {
     })
   }
 
+  const handleStartRename = () => {
+    if(activeNote) {
+      setIsRenaming(true);
+      setRenameValue(activeNote.name);
+      setTimeout(() => renameInputRef.current?.select(), 0);
+    }
+  };
+
+  const handleRenameSubmit = () => {
+    if (activeNoteId && renameValue.trim()) {
+      handleRenameNote(activeNoteId, renameValue.trim());
+    }
+    setIsRenaming(false);
+  };
+
+
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
@@ -455,52 +475,43 @@ export default function Home() {
   return (
     <TooltipProvider>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
-        <div className="absolute top-4 left-0 right-0 px-4 flex justify-center z-10">
-            {activeNote && (
-                 <Dialog>
-                    <DialogTrigger asChild>
-                        <h1 className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
-                            {activeNote.name}
-                        </h1>
-                    </DialogTrigger>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Rename Note</DialogTitle>
-                            <DialogDescription>
-                                Enter a new name for your note.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <form id="rename-form" onSubmit={(e) => {
-                             e.preventDefault();
-                             const newName = (e.target as HTMLFormElement).noteName.value;
-                             if (newName.trim()) {
-                                handleRenameNote(activeNote.id, newName.trim());
-                                // Close dialog manually if needed. Some dialogs do this automatically on submit.
-                                const closeButton = document.querySelector('[data-radix-dialog-close]');
-                                if (closeButton instanceof HTMLElement) {
-                                    closeButton.click();
-                                }
-                             }
-                        }}>
-                        <Input
-                            name="noteName"
-                            defaultValue={activeNote.name}
-                            className="mt-2"
-                            autoFocus
-                        />
-                        </form>
-                         <DialogFooter>
-                            <Button type="submit" form="rename-form">Save</Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            )}
+        <div className="absolute top-4 left-0 right-0 px-4 flex justify-center items-center z-10 group">
+          {activeNote && (
+            isRenaming ? (
+              <Input
+                ref={renameInputRef}
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={handleRenameSubmit}
+                onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+                className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
+                style={{ width: `${(renameValue.length * 10) + 40}px`, minWidth: '100px' }}
+              />
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 
+                  onClick={handleStartRename} 
+                  className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                >
+                  {activeNote.name}
+                </h1>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={handleStartRename} 
+                  className="h-6 w-6 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
+                >
+                  <Pencil className="w-4 h-4" />
+                </Button>
+              </div>
+            )
+          )}
         </div>
-        
+
         <div className="absolute inset-0 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
           <div
             ref={editorRef}
-            contentEditable={true}
+            contentEditable={!isRenaming}
             onInput={handleInput}
             onKeyDown={handleEditorKeyDown}
             className="w-full h-full min-h-screen pt-20 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
@@ -735,3 +746,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
