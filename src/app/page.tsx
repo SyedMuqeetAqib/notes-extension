@@ -58,38 +58,30 @@ export default function Home() {
   const { toast } = useToast();
 
   const checkActiveFormats = React.useCallback(() => {
-    const newActiveFormats: Record<string, boolean> = {};
-    if (typeof window !== 'undefined' && window.document) {
-      newActiveFormats.bold = document.queryCommandState("bold");
-      newActiveFormats.italic = document.queryCommandState("italic");
-      newActiveFormats.underline = document.queryCommandState("underline");
+    if (typeof window === 'undefined' || !window.document || !editorRef.current) return;
 
-      for (let i = 1; i <= 3; i++) {
-        if (document.queryCommandValue("formatBlock") === `h${i}`) {
-          newActiveFormats[`h${i}`] = true;
+    const newActiveFormats: Record<string, boolean> = {};
+    newActiveFormats.bold = document.queryCommandState("bold");
+    newActiveFormats.italic = document.queryCommandState("italic");
+    newActiveFormats.underline = document.queryCommandState("underline");
+
+    for (let i = 1; i <= 3; i++) {
+      // For headings, we check if the current selection is inside an h1, h2, etc.
+      let selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        let node = selection.getRangeAt(0).startContainer;
+        while(node.parentNode && node !== editorRef.current) {
+          if (node.nodeName.toLowerCase() === `h${i}`) {
+            newActiveFormats[`h${i}`] = true;
+            break;
+          }
+          node = node.parentNode;
         }
       }
     }
     setActiveFormats(newActiveFormats);
   }, []);
 
-  React.useEffect(() => {
-    document.addEventListener("selectionchange", checkActiveFormats);
-    if(editorRef.current) {
-      editorRef.current.addEventListener("input", checkActiveFormats);
-      editorRef.current.addEventListener("click", checkActiveFormats);
-      editorRef.current.addEventListener("keyup", checkActiveFormats);
-    }
-
-    return () => {
-      document.removeEventListener("selectionchange", checkActiveFormats);
-      if(editorRef.current) {
-        editorRef.current.removeEventListener("input", checkActiveFormats);
-        editorRef.current.removeEventListener("click", checkActiveFormats);
-        editorRef.current.removeEventListener("keyup", checkActiveFormats);
-      }
-    };
-  }, [checkActiveFormats]);
 
   // Load note from local storage on mount
   React.useEffect(() => {
@@ -102,6 +94,27 @@ export default function Home() {
     }
     setIsLoaded(true);
   }, []);
+  
+  // Set up event listeners for format checking
+  React.useEffect(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      const handler = () => {
+        checkActiveFormats();
+      };
+      document.addEventListener("selectionchange", handler);
+      editor.addEventListener("input", handler);
+      editor.addEventListener("click", handler);
+      editor.addEventListener("keyup", handler);
+      
+      return () => {
+        document.removeEventListener("selectionchange", handler);
+        editor.removeEventListener("input", handler);
+        editor.removeEventListener("click", handler);
+        editor.removeEventListener("keyup", handler);
+      };
+    }
+  }, [isLoaded, checkActiveFormats]);
 
   // Debounced save to local storage
   React.useEffect(() => {
@@ -133,9 +146,9 @@ export default function Home() {
 
   const handleInsertChecklist = () => {
     const checklistHtml = `
-      <div style="display: flex; align-items: center; margin-bottom: 8px;">
+      <div style="display: flex; align-items: center; margin-bottom: 8px;" contenteditable="false">
         <input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px;" />
-        <span></span>
+        <span contenteditable="true"></span>
       </div>
     `;
     document.execCommand("insertHTML", false, checklistHtml);
@@ -151,6 +164,7 @@ export default function Home() {
       const link = document.createElement("a");
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
       link.download = `tabulanote-${timestamp}.txt`;
+      link.href = url;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -198,7 +212,10 @@ export default function Home() {
   
   const handleConfirmNewNote = () => {
     setNote("<p><br></p>");
-    editorRef.current?.focus();
+    if(editorRef.current) {
+        editorRef.current.innerHTML = "<p><br></p>";
+        editorRef.current.focus();
+    }
     toast({
       title: "New Note",
       description: "Ready for your thoughts!",
@@ -425,3 +442,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
