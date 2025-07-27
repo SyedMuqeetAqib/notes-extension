@@ -49,12 +49,7 @@ type Note = {
 // synchronously from localStorage. This avoids a flicker or loading state.
 const getInitialState = () => {
     if (typeof window === 'undefined') {
-        return {
-            activeNoteId: null,
-            initialContent: "<p><br></p>",
-            notes: [],
-            theme: 'light'
-        };
+        return null;
     }
 
     try {
@@ -110,12 +105,14 @@ const getInitialState = () => {
 
 
 export default function Home() {
-  // Use a ref to hold initial state to prevent re-running getInitialState
-  const initialStateRef = React.useRef(getInitialState());
+  const [isClient, setIsClient] = React.useState(false);
 
-  const [notes, setNotes] = React.useState<Note[]>(initialStateRef.current.notes);
-  const [activeNoteId, setActiveNoteId] = React.useState<string | null>(initialStateRef.current.activeNoteId);
-  const [theme, setTheme] = React.useState(initialStateRef.current.theme);
+  // Use a ref to hold initial state to prevent re-running getInitialState
+  const initialStateRef = React.useRef(isClient ? getInitialState() : null);
+
+  const [notes, setNotes] = React.useState<Note[]>(initialStateRef.current?.notes || []);
+  const [activeNoteId, setActiveNoteId] = React.useState<string | null>(initialStateRef.current?.activeNoteId || null);
+  const [theme, setTheme] = React.useState(initialStateRef.current?.theme || 'light');
 
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
@@ -129,17 +126,31 @@ export default function Home() {
   const renameInputRef = React.useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
+  React.useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   // Set initial content and theme on mount
   React.useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.innerHTML = initialStateRef.current.initialContent;
+    if (isClient) {
+      const state = getInitialState();
+      if (state) {
+        setNotes(state.notes);
+        setActiveNoteId(state.activeNoteId);
+        setTheme(state.theme);
+        if (editorRef.current) {
+            editorRef.current.innerHTML = state.initialContent;
+        }
+        document.documentElement.classList.toggle("dark", state.theme === "dark");
+      }
     }
-    document.documentElement.classList.toggle("dark", initialStateRef.current.theme === "dark");
-  }, []);
+  }, [isClient]);
 
   // Load note content when activeNoteId changes (e.g., switching notes)
   React.useEffect(() => {
-    if (!activeNoteId || activeNoteId === initialStateRef.current.activeNoteId) return;
+    // Prevent running on initial state set
+    if (!activeNoteId || activeNoteId === initialStateRef.current?.activeNoteId) return;
+
     try {
       const savedNote = localStorage.getItem(`tabula-note-${activeNoteId}`);
       if (editorRef.current) {
@@ -505,6 +516,10 @@ export default function Home() {
   const formatDate = (timestamp: number) => {
     return format(new Date(timestamp), "MMM d, yyyy 'at' h:mm a");
   };
+
+  if (!isClient) {
+    return <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300"></main>;
+  }
 
   return (
     <TooltipProvider>
