@@ -9,6 +9,12 @@ import {
   Sparkles,
   FilePlus2,
   Loader2,
+  ListTodo,
+  Heading1,
+  Heading2,
+  Heading3,
+  Minus,
+  Palette,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -36,6 +42,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 export default function Home() {
   const [note, setNote] = React.useState<string>("");
@@ -81,8 +88,19 @@ export default function Home() {
     setNote(e.currentTarget.innerHTML);
   };
 
-  const handleFormat = (command: string) => {
-    document.execCommand(command, false);
+  const handleFormat = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
+    editorRef.current?.focus();
+  };
+
+  const handleInsertChecklist = () => {
+    const checklistHtml = `
+      <div style="display: flex; align-items: center; margin-bottom: 8px;">
+        <input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px;" />
+        <span></span>
+      </div>
+    `;
+    document.execCommand("insertHTML", false, checklistHtml);
     editorRef.current?.focus();
   };
 
@@ -200,7 +218,7 @@ export default function Home() {
         )}
 
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <CardContent className="p-2 flex items-center gap-1">
+          <CardContent className="p-2 flex items-center flex-wrap gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold">
@@ -224,6 +242,67 @@ export default function Home() {
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Underline (Ctrl+U)</TooltipContent>
+            </Tooltip>
+             <Popover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <PopoverTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="Text Color">
+                      <Palette className="w-5 h-5" />
+                    </Button>
+                  </PopoverTrigger>
+                </TooltipTrigger>
+                <TooltipContent>Text Color</TooltipContent>
+              </Tooltip>
+              <PopoverContent className="w-auto p-2">
+                <input type="color" onChange={(e) => handleFormat("foreColor", e.target.value)} className="w-8 h-8" />
+              </PopoverContent>
+            </Popover>
+
+            <Separator orientation="vertical" className="h-6 mx-1" />
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h1>")} aria-label="Heading 1">
+                  <Heading1 className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Heading 1</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h2>")} aria-label="Heading 2">
+                  <Heading2 className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Heading 2</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h3>")} aria-label="Heading 3">
+                  <Heading3 className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Heading 3</TooltipContent>
+            </Tooltip>
+            
+            <Separator orientation="vertical" className="h-6 mx-1" />
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={handleInsertChecklist} aria-label="Insert Checklist">
+                  <ListTodo className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Checklist</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("insertHorizontalRule")} aria-label="Insert Horizontal Line">
+                  <Minus className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Horizontal Line</TooltipContent>
             </Tooltip>
             
             <Separator orientation="vertical" className="h-6 mx-1" />
@@ -308,3 +387,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
