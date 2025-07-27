@@ -139,8 +139,8 @@ export default function Home() {
 
   const handleInsertChecklist = () => {
     const checklistHtml = `
-      <div class="flex items-start my-2 checklist-item">
-        <input type="checkbox" class="mt-1 mr-2 w-4 h-4" />
+      <div class="flex items-center my-2 checklist-item">
+        <input type="checkbox" class="mr-2 w-4 h-4" />
         <div class="flex-grow">&nbsp;</div>
       </div>
     `;
