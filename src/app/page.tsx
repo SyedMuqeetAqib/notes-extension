@@ -25,6 +25,7 @@ import {
   Folder,
   Pencil,
 } from "lucide-react";
+import { format } from "date-fns";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,6 +72,7 @@ type Note = {
   id: string;
   name: string;
   createdAt: number;
+  lastUpdatedAt: number;
 };
 
 export default function Home() {
@@ -95,7 +97,11 @@ export default function Home() {
   React.useEffect(() => {
     try {
       const savedIndex = localStorage.getItem("tabula-notes-index");
-      const savedNotes: Note[] = savedIndex ? JSON.parse(savedIndex) : [];
+      let savedNotes: Note[] = savedIndex ? JSON.parse(savedIndex) : [];
+      
+      // Backwards compatibility for notes without lastUpdatedAt
+      savedNotes = savedNotes.map(note => note.lastUpdatedAt ? note : { ...note, lastUpdatedAt: note.createdAt });
+
       setNotes(savedNotes);
 
       if (savedNotes.length > 0) {
@@ -107,7 +113,8 @@ export default function Home() {
         const newNote: Note = {
           id: `note-${Date.now()}`,
           name: "My First Note",
-          createdAt: Date.now()
+          createdAt: Date.now(),
+          lastUpdatedAt: Date.now(),
         };
         setNotes([newNote]);
         setActiveNoteId(newNote.id);
@@ -201,6 +208,14 @@ export default function Home() {
     const noteContent = e.currentTarget.innerHTML;
      try {
         localStorage.setItem(`tabula-note-${activeNoteId}`, noteContent);
+        
+        // Update lastUpdatedAt timestamp
+        const updatedNotes = notes.map(n => 
+            n.id === activeNoteId ? {...n, lastUpdatedAt: Date.now()} : n
+        );
+        setNotes(updatedNotes);
+        localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
+
       } catch (error) {
         console.error("Failed to save note to local storage", error);
         toast({
@@ -288,7 +303,8 @@ export default function Home() {
     const newNote: Note = {
       id: `note-${Date.now()}`,
       name: "Untitled Note",
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      lastUpdatedAt: Date.now(),
     };
     const updatedNotes = [...notes, newNote];
     setNotes(updatedNotes);
@@ -323,7 +339,7 @@ export default function Home() {
   };
 
   const handleRenameNote = (noteId: string, newName: string) => {
-    const updatedNotes = notes.map(n => n.id === noteId ? {...n, name: newName} : n);
+    const updatedNotes = notes.map(n => n.id === noteId ? {...n, name: newName, lastUpdatedAt: Date.now()} : n);
     setNotes(updatedNotes);
     localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
     toast({
@@ -471,40 +487,49 @@ export default function Home() {
   }, [handleExport, handleInsertChecklist]);
   
   const activeNote = notes.find(n => n.id === activeNoteId);
+  const formatDate = (timestamp: number) => {
+    return format(new Date(timestamp), "MMM d, yyyy 'at' h:mm a");
+  };
 
   return (
     <TooltipProvider>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
-        <div className="absolute top-4 left-0 right-0 px-4 flex justify-center items-center z-10 group">
+        <div className="absolute top-4 left-0 right-0 px-4 flex flex-col justify-center items-center z-10 group">
           {activeNote && (
-            isRenaming ? (
-              <Input
-                ref={renameInputRef}
-                value={renameValue}
-                onChange={(e) => setRenameValue(e.target.value)}
-                onBlur={handleRenameSubmit}
-                onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
-                className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
-                style={{ width: `${(renameValue.length * 10) + 40}px`, minWidth: '100px' }}
-              />
-            ) : (
-              <div className="flex items-center gap-2">
-                <h1 
-                  onClick={handleStartRename} 
-                  className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                >
-                  {activeNote.name}
-                </h1>
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={handleStartRename} 
-                  className="h-6 w-6 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
-                >
-                  <Pencil className="w-4 h-4" />
-                </Button>
+            <>
+              <div className="text-xs text-muted-foreground mb-2 flex gap-4">
+                  <span>Created: {formatDate(activeNote.createdAt)}</span>
+                  <span>Updated: {formatDate(activeNote.lastUpdatedAt)}</span>
               </div>
-            )
+              {isRenaming ? (
+                <Input
+                  ref={renameInputRef}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={handleRenameSubmit}
+                  onKeyDown={(e) => e.key === 'Enter' && handleRenameSubmit()}
+                  className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
+                  style={{ width: `${(renameValue.length * 10) + 40}px`, minWidth: '100px' }}
+                />
+              ) : (
+                <div className="flex items-center gap-2">
+                  <h1 
+                    onClick={handleStartRename} 
+                    className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  >
+                    {activeNote.name}
+                  </h1>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={handleStartRename} 
+                    className="h-6 w-6 opacity-0 group-hover:opacity-50 hover:opacity-100 transition-opacity"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -514,7 +539,7 @@ export default function Home() {
             contentEditable={!isRenaming}
             onInput={handleInput}
             onKeyDown={handleEditorKeyDown}
-            className="w-full h-full min-h-screen pt-20 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+            className="w-full h-full min-h-screen pt-24 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
             suppressContentEditableWarning={true}
             style={{ caretColor: "hsl(var(--ring))" }}
             aria-label="Note editor"
@@ -544,7 +569,7 @@ export default function Home() {
                 <DropdownMenuLabel>My Notes</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                    {notes.sort((a,b) => b.createdAt - a.createdAt).map(note => (
+                    {notes.sort((a,b) => b.lastUpdatedAt - a.lastUpdatedAt).map(note => (
                          <DropdownMenuItem 
                             key={note.id} 
                             onClick={() => setActiveNoteId(note.id)}
