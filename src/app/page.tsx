@@ -139,10 +139,10 @@ export default function Home() {
 
   const handleInsertChecklist = () => {
     const checklistHtml = `
-      <div style="display: flex; align-items: center; margin-bottom: 8px;" contenteditable="false">
-        <input type="checkbox" style="margin-right: 8px; width: 16px; height: 16px;" />
-        <span contenteditable="true" style="width: 100%;"></span>
-      </div>
+      <p style="display: flex; align-items: flex-start;">
+        <input type="checkbox" style="margin-right: 8px; margin-top: 5px; width: 16px; height: 16px;" />
+        <span>&nbsp;</span>
+      </p>
     `;
     document.execCommand("insertHTML", false, checklistHtml);
     editorRef.current?.focus();
