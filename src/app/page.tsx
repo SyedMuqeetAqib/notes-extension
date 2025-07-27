@@ -218,10 +218,6 @@ export default function Home() {
         setNotes(updatedNotes);
         localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
 
-        // Show tooltip on update
-        setIsInfoTooltipOpen(true);
-        setTimeout(() => setIsInfoTooltipOpen(false), 2000);
-
       } catch (error) {
         console.error("Failed to save note to local storage", error);
         toast({
@@ -538,7 +534,7 @@ export default function Home() {
            </div>
            <div className="flex-1 flex justify-end">
              {activeNote && (
-               <Tooltip open={isInfoTooltipOpen} onOpenChange={setIsInfoTooltipOpen}>
+               <Tooltip onOpenChange={setIsInfoTooltipOpen}>
                  <TooltipTrigger asChild>
                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                       <Info className="w-4 h-4" />
