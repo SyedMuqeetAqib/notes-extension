@@ -540,7 +540,7 @@ export default function Home() {
                             className={cn("flex justify-between", note.id === activeNoteId && "bg-muted")}
                          >
                             <span>{note.name}</span>
-                            <AlertDialog onOpenChange={(e) => e.stopPropagation()}>
+                            <AlertDialog>
                                 <AlertDialogTrigger asChild onClick={(e) => e.stopPropagation()}>
                                      <Button variant="ghost" size="icon" className="h-6 w-6 opacity-50 hover:opacity-100"><Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" /></Button>
                                 </AlertDialogTrigger>
