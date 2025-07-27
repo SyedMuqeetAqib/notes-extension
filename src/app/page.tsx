@@ -16,6 +16,7 @@ import {
   Heading3,
   Minus,
   Palette,
+  Pilcrow,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,9 @@ export default function Home() {
         const nodeName = node.nodeName.toLowerCase();
         if (nodeName.match(/^h[1-3]$/)) {
           newActiveFormats[nodeName] = true;
+        }
+        if (nodeName === 'p') {
+          newActiveFormats.p = true;
         }
         node = node.parentNode as HTMLElement;
       }
@@ -303,7 +307,15 @@ export default function Home() {
             </Popover>
 
             <Separator orientation="vertical" className="h-6 mx-1" />
-
+            
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<p>")} aria-label="Normal Text" className={cn(activeFormats.p && "bg-muted")}>
+                  <Pilcrow className="w-5 h-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Normal Text</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => handleFormat("formatBlock", "<h1>")} aria-label="Heading 1" className={cn(activeFormats.h1 && "bg-muted")}>
