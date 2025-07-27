@@ -65,4 +65,13 @@
   h3 {
     @apply text-2xl font-semibold;
   }
+  .checklist-item {
+    @apply flex items-center my-2;
+  }
+  .checklist-item input[type="checkbox"] {
+    @apply w-5 h-5 mr-3;
+  }
+  .checklist-item > div {
+    @apply flex-grow;
+  }
 }
