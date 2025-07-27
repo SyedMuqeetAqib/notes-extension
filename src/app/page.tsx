@@ -20,6 +20,8 @@ import {
   MoreVertical,
   Moon,
   Sun,
+  Trash2,
+  FileText,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -38,6 +40,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -55,7 +58,27 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import {
+  Sidebar,
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarFooter,
+  SidebarInset,
+  SidebarMenuAction,
+} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
+
+type Note = {
+  id: string;
+  name: string;
+  createdAt: number;
+};
 
 export default function Home() {
   const [isLoaded, setIsLoaded] = React.useState(false);
@@ -64,9 +87,56 @@ export default function Home() {
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = React.useState(false);
   const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
   const [theme, setTheme] = React.useState('light');
+  
+  const [notes, setNotes] = React.useState<Note[]>([]);
+  const [activeNoteId, setActiveNoteId] = React.useState<string | null>(null);
 
   const editorRef = React.useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Load notes index and set active note
+  React.useEffect(() => {
+    try {
+      const savedIndex = localStorage.getItem("tabula-notes-index");
+      const savedNotes: Note[] = savedIndex ? JSON.parse(savedIndex) : [];
+      setNotes(savedNotes);
+
+      if (savedNotes.length > 0) {
+        const lastActiveId = localStorage.getItem('tabula-last-active-note');
+        const noteToActivate = savedNotes.find(n => n.id === lastActiveId) || savedNotes[0];
+        setActiveNoteId(noteToActivate.id);
+      } else {
+        // Create a default note if none exist
+        const newNote: Note = {
+          id: `note-${Date.now()}`,
+          name: "My First Note",
+          createdAt: Date.now()
+        };
+        setNotes([newNote]);
+        setActiveNoteId(newNote.id);
+        localStorage.setItem("tabula-notes-index", JSON.stringify([newNote]));
+        localStorage.setItem(`tabula-note-${newNote.id}`, "<p>Welcome to TabulaNote!</p>");
+        localStorage.setItem("tabula-last-active-note", newNote.id);
+      }
+    } catch (error) {
+      console.error("Failed to load notes index", error);
+    }
+  }, []);
+  
+  // Load active note content when activeNoteId changes
+  React.useEffect(() => {
+    if (!activeNoteId) return;
+    try {
+      const savedNote = localStorage.getItem(`tabula-note-${activeNoteId}`);
+      if (editorRef.current) {
+        editorRef.current.innerHTML = savedNote || "<p><br></p>";
+      }
+      localStorage.setItem("tabula-last-active-note", activeNoteId);
+    } catch (error) {
+      console.error("Failed to load note:", error);
+    }
+    setIsLoaded(true);
+  }, [activeNoteId]);
   
   // Theme management
   React.useEffect(() => {
@@ -109,22 +179,6 @@ export default function Home() {
     }
     setActiveFormats(newActiveFormats);
   }, []);
-
-  // Load note from local storage on mount
-  React.useEffect(() => {
-    try {
-      const savedNote = localStorage.getItem("tabula-note");
-      if (editorRef.current) {
-        editorRef.current.innerHTML = savedNote || "<p><br></p>";
-      }
-    } catch (error) {
-      console.error("Failed to load note from local storage", error);
-      if (editorRef.current) {
-        editorRef.current.innerHTML = "<p><br></p>";
-      }
-    }
-    setIsLoaded(true);
-  }, []);
   
   // Set up event listeners for format checking
   React.useEffect(() => {
@@ -146,9 +200,10 @@ export default function Home() {
   }, [isLoaded, checkActiveFormats]);
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
+    if (!activeNoteId) return;
     const noteContent = e.currentTarget.innerHTML;
      try {
-        localStorage.setItem("tabula-note", noteContent);
+        localStorage.setItem(`tabula-note-${activeNoteId}`, noteContent);
       } catch (error) {
         console.error("Failed to save note to local storage", error);
         toast({
@@ -183,8 +238,9 @@ export default function Home() {
       const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      const activeNoteName = notes.find(n => n.id === activeNoteId)?.name || 'note';
       const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      link.download = `tabulanote-${timestamp}.txt`;
+      link.download = `${activeNoteName.replace(/\s/g, '_')}-${timestamp}.txt`;
       link.href = url;
       document.body.appendChild(link);
       link.click();
@@ -202,7 +258,7 @@ export default function Home() {
         description: "There was an error exporting your note.",
       });
     }
-  }, [toast]);
+  }, [toast, activeNoteId, notes]);
 
   const handleSummarize = async () => {
     if (!editorRef.current) return;
@@ -231,17 +287,50 @@ export default function Home() {
     }
   };
   
-  const handleConfirmNewNote = () => {
-    if(editorRef.current) {
-        editorRef.current.innerHTML = "<p><br></p>";
-        editorRef.current.focus();
-    }
-    localStorage.setItem("tabula-note", "<p><br></p>");
+  const handleCreateNewNote = () => {
+    const newNote: Note = {
+      id: `note-${Date.now()}`,
+      name: "Untitled Note",
+      createdAt: Date.now()
+    };
+    const updatedNotes = [...notes, newNote];
+    setNotes(updatedNotes);
+    setActiveNoteId(newNote.id);
+    localStorage.setItem("tabula-notes-index", JSON.stringify(updatedNotes));
+    localStorage.setItem(`tabula-note-${newNote.id}`, "<p><br></p>");
     toast({
-      title: "New Note",
+      title: "New Note Created",
       description: "Ready for your thoughts!",
     });
   };
+
+  const handleDeleteNote = (noteId: string) => {
+    const updatedNotes = notes.filter(n => n.id !== noteId);
+    setNotes(updatedNotes);
+    localStorage.removeItem(`tabula-note-${noteId}`);
+    localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
+    
+    if (activeNoteId === noteId) {
+        if (updatedNotes.length > 0) {
+            setActiveNoteId(updatedNotes[0].id);
+        } else {
+            handleCreateNewNote(); // Create a new one if last one was deleted
+        }
+    }
+
+    toast({
+      title: "Note Deleted",
+    });
+  }
+  
+  const handleRenameNote = (noteId: string, newName: string) => {
+    const updatedNotes = notes.map(n => n.id === noteId ? {...n, name: newName} : n);
+    setNotes(updatedNotes);
+    localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
+    toast({
+      title: "Note Renamed",
+    })
+  }
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const selection = window.getSelection();
@@ -365,11 +454,111 @@ export default function Home() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleExport, handleInsertChecklist]);
+  
+  const activeNote = notes.find(n => n.id === activeNoteId);
 
   return (
+    <SidebarProvider>
     <TooltipProvider>
+      <Sidebar>
+        <SidebarHeader>
+            <div className="flex items-center gap-2">
+                <FileText className="w-6 h-6 text-primary" />
+                <h2 className="text-lg font-semibold">My Notes</h2>
+            </div>
+        </SidebarHeader>
+        <SidebarContent>
+            <SidebarMenu>
+            {notes.sort((a,b) => b.createdAt - a.createdAt).map(note => (
+                <SidebarMenuItem key={note.id}>
+                    <SidebarMenuButton 
+                        onClick={() => setActiveNoteId(note.id)}
+                        isActive={note.id === activeNoteId}
+                    >
+                        <span>{note.name}</span>
+                    </SidebarMenuButton>
+                    <AlertDialog>
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <AlertDialogTrigger asChild>
+                                    <SidebarMenuAction>
+                                        <Trash2 className="text-destructive/70 hover:text-destructive"/>
+                                    </SidebarMenuAction>
+                                </AlertDialogTrigger>
+                            </TooltipTrigger>
+                            <TooltipContent side="right">Delete Note</TooltipContent>
+                        </Tooltip>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Delete "{note.name}"?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete this note.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">
+                                Delete
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </SidebarMenuItem>
+            ))}
+            </SidebarMenu>
+        </SidebarContent>
+        <SidebarFooter>
+            <Button variant="outline" onClick={handleCreateNewNote}>
+                <FilePlus2 className="w-4 h-4 mr-2"/>
+                New Note
+            </Button>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
-        <div className="absolute inset-0 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
+        <div className="absolute top-0 left-0 right-0 p-4 flex justify-center">
+            {activeNote && (
+                 <Dialog>
+                    <DialogTrigger asChild>
+                        <h1 className="text-lg font-semibold text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
+                            {activeNote.name}
+                        </h1>
+                    </DialogTrigger>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Rename Note</DialogTitle>
+                            <DialogDescription>
+                                Enter a new name for your note.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <form id="rename-form" onSubmit={(e) => {
+                             e.preventDefault();
+                             const newName = (e.target as HTMLFormElement).noteName.value;
+                             if (newName.trim()) {
+                                handleRenameNote(activeNote.id, newName.trim());
+                                // Close dialog manually if needed. Some dialogs do this automatically on submit.
+                                const closeButton = document.querySelector('[data-radix-dialog-close]');
+                                if (closeButton instanceof HTMLElement) {
+                                    closeButton.click();
+                                }
+                             }
+                        }}>
+                        <Input
+                            name="noteName"
+                            defaultValue={activeNote.name}
+                            className="mt-2"
+                            autoFocus
+                        />
+                        </form>
+                         <DialogFooter>
+                            <Button type="submit" form="rename-form">Save</Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </div>
+        
+        <div className="absolute inset-0 pt-16 transition-opacity duration-500" style={{ opacity: isLoaded ? 1 : 0 }}>
           <div
             ref={editorRef}
             contentEditable={true}
@@ -387,6 +576,10 @@ export default function Home() {
             <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           </div>
         )}
+
+        <div className="fixed top-4 left-4 z-10 md:hidden">
+            <SidebarTrigger />
+        </div>
 
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <CardContent className="p-2 flex flex-wrap items-center gap-1">
@@ -495,35 +688,6 @@ export default function Home() {
               <TooltipContent>AI Summarize</TooltipContent>
             </Tooltip>
             
-            <AlertDialog>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                    <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label="Create new note">
-                            <FilePlus2 className="w-5 h-5" />
-                        </Button>
-                    </AlertDialogTrigger>
-                </TooltipTrigger>
-                <TooltipContent>New Note</TooltipContent>
-              </Tooltip>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Start a New Note?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This will clear the current editor. This action cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleConfirmNewNote} className="bg-primary hover:bg-primary/90">
-                    Create New Note
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-            
-            <Separator orientation="vertical" className="h-8 mx-1" />
-
             <DropdownMenu>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -536,6 +700,10 @@ export default function Home() {
                 <TooltipContent>More</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleCreateNewNote}>
+                  <FilePlus2 className="w-4 h-4 mr-2" />
+                  <span>New Note</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExport}>
                   <Download className="w-4 h-4 mr-2" />
                   <span>Export as .txt</span>
@@ -577,9 +745,10 @@ export default function Home() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-
         <Toaster />
       </main>
+      </SidebarInset>
     </TooltipProvider>
+    </SidebarProvider>
   );
 }
