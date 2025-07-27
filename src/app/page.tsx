@@ -139,10 +139,10 @@ export default function Home() {
 
   const handleInsertChecklist = () => {
     const checklistHtml = `
-      <p style="display: flex; align-items: flex-start;">
-        <input type="checkbox" style="margin-right: 8px; margin-top: 5px; width: 16px; height: 16px;" />
-        <span>&nbsp;</span>
-      </p>
+      <div class="flex items-start my-2 checklist-item">
+        <input type="checkbox" class="mt-1 mr-2 w-4 h-4" />
+        <div class="flex-grow">&nbsp;</div>
+      </div>
     `;
     document.execCommand("insertHTML", false, checklistHtml);
     editorRef.current?.focus();
@@ -215,6 +215,45 @@ export default function Home() {
     });
   };
 
+  const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter') {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const container = range.commonAncestorContainer;
+        let parentElement = container.nodeType === Node.ELEMENT_NODE ? container as Element : container.parentElement;
+
+        while(parentElement && parentElement !== editorRef.current) {
+          if (parentElement.classList.contains('checklist-item')) {
+            event.preventDefault();
+            const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
+            (newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement).checked = false;
+            // Clear the text content for the new item
+            const contentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
+            if(contentDiv) {
+              contentDiv.innerHTML = '&nbsp;';
+            }
+
+            parentElement.insertAdjacentElement('afterend', newChecklistItem);
+            
+            // Move cursor to new checklist item
+            const newRange = document.createRange();
+            const newContentDiv = newChecklistItem.querySelector('.flex-grow');
+            if(newContentDiv) {
+              newRange.setStart(newContentDiv, 0);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
+
+            return;
+          }
+          parentElement = parentElement.parentElement;
+        }
+      }
+    }
+  };
+
   // Keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -251,6 +290,7 @@ export default function Home() {
             ref={editorRef}
             contentEditable={true}
             onInput={handleInput}
+            onKeyDown={handleEditorKeyDown}
             className="w-full h-full min-h-screen p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
             suppressContentEditableWarning={true}
             style={{ caretColor: "hsl(var(--ring))" }}
