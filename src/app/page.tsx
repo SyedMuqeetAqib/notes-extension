@@ -22,6 +22,7 @@ import {
   Sun,
   Trash2,
   FileText,
+  Folder,
 } from "lucide-react";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,11 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -51,7 +57,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
@@ -59,19 +64,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import {
-  Sidebar,
-  SidebarProvider,
-  SidebarTrigger,
-  SidebarContent,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarFooter,
-  SidebarInset,
-  SidebarMenuAction,
-} from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 
 type Note = {
@@ -223,7 +215,7 @@ export default function Home() {
   const handleInsertChecklist = React.useCallback(() => {
     const checklistHtml = `
       <div class="flex items-center my-2 checklist-item">
-        <input type="checkbox" class="mr-2 w-5 h-5" />
+        <input type="checkbox" class="mr-3 w-5 h-5" />
         <div class="flex-grow" contenteditable="true">&nbsp;</div>
       </div>
     `;
@@ -304,25 +296,27 @@ export default function Home() {
     });
   };
 
-  const handleDeleteNote = (noteId: string) => {
-    const updatedNotes = notes.filter(n => n.id !== noteId);
+  const handleDeleteNote = (noteIdToDelete: string) => {
+    // Prevent dropdown from closing
+    const updatedNotes = notes.filter(n => n.id !== noteIdToDelete);
     setNotes(updatedNotes);
-    localStorage.removeItem(`tabula-note-${noteId}`);
+    localStorage.removeItem(`tabula-note-${noteIdToDelete}`);
     localStorage.setItem('tabula-notes-index', JSON.stringify(updatedNotes));
     
-    if (activeNoteId === noteId) {
+    if (activeNoteId === noteIdToDelete) {
         if (updatedNotes.length > 0) {
             setActiveNoteId(updatedNotes[0].id);
         } else {
-            handleCreateNewNote(); // Create a new one if last one was deleted
+            // This will create a new note and set it as active
+            handleCreateNewNote();
         }
     }
 
     toast({
       title: "Note Deleted",
     });
-  }
-  
+  };
+
   const handleRenameNote = (noteId: string, newName: string) => {
     const updatedNotes = notes.map(n => n.id === noteId ? {...n, name: newName} : n);
     setNotes(updatedNotes);
@@ -458,63 +452,7 @@ export default function Home() {
   const activeNote = notes.find(n => n.id === activeNoteId);
 
   return (
-    <SidebarProvider>
     <TooltipProvider>
-      <Sidebar>
-        <SidebarHeader>
-            <div className="flex items-center gap-2">
-                <FileText className="w-6 h-6 text-primary" />
-                <h2 className="text-lg font-semibold">My Notes</h2>
-            </div>
-        </SidebarHeader>
-        <SidebarContent>
-            <SidebarMenu>
-            {notes.sort((a,b) => b.createdAt - a.createdAt).map(note => (
-                <SidebarMenuItem key={note.id}>
-                    <SidebarMenuButton 
-                        onClick={() => setActiveNoteId(note.id)}
-                        isActive={note.id === activeNoteId}
-                    >
-                        <span>{note.name}</span>
-                    </SidebarMenuButton>
-                    <AlertDialog>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <AlertDialogTrigger asChild>
-                                    <SidebarMenuAction>
-                                        <Trash2 className="text-destructive/70 hover:text-destructive"/>
-                                    </SidebarMenuAction>
-                                </AlertDialogTrigger>
-                            </TooltipTrigger>
-                            <TooltipContent side="right">Delete Note</TooltipContent>
-                        </Tooltip>
-                        <AlertDialogContent>
-                            <AlertDialogHeader>
-                                <AlertDialogTitle>Delete "{note.name}"?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                This action cannot be undone. This will permanently delete this note.
-                                </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleDeleteNote(note.id)} className="bg-destructive hover:bg-destructive/90">
-                                Delete
-                                </AlertDialogAction>
-                            </AlertDialogFooter>
-                        </AlertDialogContent>
-                    </AlertDialog>
-                </SidebarMenuItem>
-            ))}
-            </SidebarMenu>
-        </SidebarContent>
-        <SidebarFooter>
-            <Button variant="outline" onClick={handleCreateNewNote}>
-                <FilePlus2 className="w-4 h-4 mr-2"/>
-                New Note
-            </Button>
-        </SidebarFooter>
-      </Sidebar>
-      <SidebarInset>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
         <div className="absolute top-0 left-0 right-0 p-4 flex justify-center">
             {activeNote && (
@@ -577,12 +515,62 @@ export default function Home() {
           </div>
         )}
 
-        <div className="fixed top-4 left-4 z-10 md:hidden">
-            <SidebarTrigger />
-        </div>
-
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <CardContent className="p-2 flex flex-wrap items-center gap-1">
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" aria-label="My Notes">
+                      <Folder className="w-5 h-5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent>My Notes</TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>My Notes</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuGroup>
+                    {notes.sort((a,b) => b.createdAt - a.createdAt).map(note => (
+                         <DropdownMenuItem 
+                            key={note.id} 
+                            onClick={() => setActiveNoteId(note.id)}
+                            className={cn("flex justify-between", note.id === activeNoteId && "bg-muted")}
+                         >
+                            <span>{note.name}</span>
+                            <AlertDialog onOpenChange={(e) => e.stopPropagation()}>
+                                <AlertDialogTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                     <Button variant="ghost" size="icon" className="h-6 w-6 opacity-50 hover:opacity-100"><Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" /></Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete "{note.name}"?</AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete this note.
+                                        </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={(e) => { e.stopPropagation(); handleDeleteNote(note.id); }} className="bg-destructive hover:bg-destructive/90">
+                                        Delete
+                                        </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                </AlertDialogContent>
+                            </AlertDialog>
+                        </DropdownMenuItem>
+                    ))}
+                </DropdownMenuGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleCreateNewNote}>
+                  <FilePlus2 className="w-4 h-4 mr-2" />
+                  <span>New Note</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <Separator orientation="vertical" className="h-8 mx-1" />
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="icon" onClick={() => handleFormat("bold")} aria-label="Bold" className={cn(activeFormats.bold && "bg-muted")}>
@@ -700,10 +688,6 @@ export default function Home() {
                 <TooltipContent>More</TooltipContent>
               </Tooltip>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleCreateNewNote}>
-                  <FilePlus2 className="w-4 h-4 mr-2" />
-                  <span>New Note</span>
-                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExport}>
                   <Download className="w-4 h-4 mr-2" />
                   <span>Export as .txt</span>
@@ -747,8 +731,6 @@ export default function Home() {
         </Dialog>
         <Toaster />
       </main>
-      </SidebarInset>
     </TooltipProvider>
-    </SidebarProvider>
   );
 }
