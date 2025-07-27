@@ -225,32 +225,44 @@ export default function Home() {
 
     while(parentElement && parentElement !== editorRef.current) {
       if (parentElement.classList.contains('checklist-item')) {
+        const contentDiv = parentElement.querySelector('.flex-grow');
         if (event.key === 'Enter') {
           event.preventDefault();
-          const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
-          const checkbox = newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
-          if (checkbox) {
-            checkbox.checked = false;
-          }
-          const contentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
-          if(contentDiv) {
-            contentDiv.innerHTML = '&nbsp;';
-          }
+          if (contentDiv && (contentDiv.textContent === '' || contentDiv.textContent === '\u00A0' || contentDiv.innerHTML === '&nbsp;')) {
+             const p = document.createElement('p');
+             p.innerHTML = '<br>';
+             parentElement.replaceWith(p);
+             
+             const newRange = document.createRange();
+             newRange.setStart(p, 0);
+             newRange.collapse(true);
+             selection.removeAllRanges();
+             selection.addRange(newRange);
+          } else {
+            const newChecklistItem = parentElement.cloneNode(true) as HTMLElement;
+            const checkbox = newChecklistItem.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+            if (checkbox) {
+              checkbox.checked = false;
+            }
+            const newContentDiv = newChecklistItem.querySelector('.flex-grow') as HTMLElement;
+            if(newContentDiv) {
+              newContentDiv.innerHTML = '&nbsp;';
+            }
 
-          parentElement.insertAdjacentElement('afterend', newChecklistItem);
-          
-          const newRange = document.createRange();
-          const newContentDiv = newChecklistItem.querySelector('.flex-grow');
-          if(newContentDiv) {
-            newRange.setStart(newContentDiv, 0);
-            newRange.collapse(true);
-            selection.removeAllRanges();
-            selection.addRange(newRange);
+            parentElement.insertAdjacentElement('afterend', newChecklistItem);
+            
+            const newRange = document.createRange();
+            const focusableDiv = newChecklistItem.querySelector('.flex-grow');
+            if(focusableDiv) {
+              newRange.setStart(focusableDiv, 0);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            }
           }
           return;
         } else if (event.key === 'Backspace') {
-          const contentDiv = parentElement.querySelector('.flex-grow');
-          if (contentDiv && (contentDiv.textContent === '' || contentDiv.textContent === '\u00A0') && range.startOffset === 0) {
+          if (contentDiv && (contentDiv.textContent === '' || contentDiv.textContent === '\u00A0' || contentDiv.innerHTML === '&nbsp;') && range.startOffset === 0) {
             event.preventDefault();
             const p = document.createElement('p');
             p.innerHTML = '<br>';
