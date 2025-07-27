@@ -137,16 +137,16 @@ export default function Home() {
     checkActiveFormats();
   };
 
-  const handleInsertChecklist = () => {
+  const handleInsertChecklist = React.useCallback(() => {
     const checklistHtml = `
       <div class="flex items-center my-2 checklist-item">
         <input type="checkbox" class="mr-2 w-4 h-4" />
-        <div class="flex-grow">&nbsp;</div>
+        <div class="flex-grow" contenteditable="true">&nbsp;</div>
       </div>
     `;
     document.execCommand("insertHTML", false, checklistHtml);
     editorRef.current?.focus();
-  };
+  }, []);
 
   const handleExport = React.useCallback(() => {
     if (!editorRef.current) return;
@@ -285,29 +285,58 @@ export default function Home() {
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.ctrlKey || event.metaKey) {
-        switch (event.key) {
-          case "b":
-            event.preventDefault();
-            handleFormat("bold");
-            break;
-          case "i":
-            event.preventDefault();
-            handleFormat("italic");
-            break;
-          case "u":
-            event.preventDefault();
-            handleFormat("underline");
-            break;
-          case "s":
-            event.preventDefault();
-            handleExport();
-            break;
+        if (event.altKey) {
+          switch (event.key) {
+            case "1":
+              event.preventDefault();
+              handleFormat("formatBlock", "<h1>");
+              break;
+            case "2":
+              event.preventDefault();
+              handleFormat("formatBlock", "<h2>");
+              break;
+            case "3":
+              event.preventDefault();
+              handleFormat("formatBlock", "<h3>");
+              break;
+            case "0":
+              event.preventDefault();
+              handleFormat("formatBlock", "<p>");
+              break;
+          }
+        } else if (event.shiftKey) {
+            switch (event.key) {
+              case "C":
+              case "c":
+                event.preventDefault();
+                handleInsertChecklist();
+                break;
+            }
+        } else {
+            switch (event.key) {
+              case "b":
+                event.preventDefault();
+                handleFormat("bold");
+                break;
+              case "i":
+                event.preventDefault();
+                handleFormat("italic");
+                break;
+              case "u":
+                event.preventDefault();
+                handleFormat("underline");
+                break;
+              case "s":
+                event.preventDefault();
+                handleExport();
+                break;
+            }
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleExport]);
+  }, [handleExport, handleInsertChecklist]);
 
   return (
     <TooltipProvider>
@@ -381,7 +410,7 @@ export default function Home() {
                   <Pilcrow className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Normal Text</TooltipContent>
+              <TooltipContent>Normal Text (Ctrl+Alt+0)</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -389,7 +418,7 @@ export default function Home() {
                   <Heading1 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Heading 1</TooltipContent>
+              <TooltipContent>Heading 1 (Ctrl+Alt+1)</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -397,7 +426,7 @@ export default function Home() {
                   <Heading2 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Heading 2</TooltipContent>
+              <TooltipContent>Heading 2 (Ctrl+Alt+2)</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -405,7 +434,7 @@ export default function Home() {
                   <Heading3 className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Heading 3</TooltipContent>
+              <TooltipContent>Heading 3 (Ctrl+Alt+3)</TooltipContent>
             </Tooltip>
             
             <Separator orientation="vertical" className="h-6 mx-1" />
@@ -416,7 +445,7 @@ export default function Home() {
                   <ListTodo className="w-5 h-5" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Checklist</TooltipContent>
+              <TooltipContent>Checklist (Ctrl+Shift+C)</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -509,3 +538,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
