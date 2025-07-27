@@ -235,6 +235,18 @@ export default function Home() {
   };
 
   const handleInsertChecklist = React.useCallback(() => {
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+        let node = selection.getRangeAt(0).startContainer;
+        while (node && node !== editorRef.current) {
+            if (node.nodeType === Node.ELEMENT_NODE && (node as HTMLElement).classList.contains('checklist-item')) {
+                // Already in a checklist item, do nothing
+                return;
+            }
+            node = node.parentNode;
+        }
+    }
+    
     const checklistHtml = `
       <div class="flex items-center my-2 checklist-item">
         <input type="checkbox" class="mr-3 w-5 h-5" />
@@ -494,7 +506,7 @@ export default function Home() {
   };
 
   return (
-    <TooltipProvider delayDuration={100}>
+    <TooltipProvider>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
         <div className="absolute top-4 left-4 right-4 h-8 flex justify-between items-center z-10">
            <div className="flex-1"></div>
@@ -534,7 +546,7 @@ export default function Home() {
            </div>
            <div className="flex-1 flex justify-end">
              {activeNote && (
-               <Tooltip onOpenChange={setIsInfoTooltipOpen}>
+               <Tooltip>
                  <TooltipTrigger asChild>
                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground">
                       <Info className="w-4 h-4" />
@@ -790,7 +802,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    
-
-    
