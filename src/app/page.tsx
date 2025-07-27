@@ -3,7 +3,6 @@
 
 import * as React from "react";
 import dynamic from 'next/dynamic';
-import { format } from "date-fns";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
 import {
@@ -514,7 +513,18 @@ export default function Home() {
   
   const activeNote = notes.find(n => n.id === activeNoteId);
   const formatDate = (timestamp: number) => {
-    return format(new Date(timestamp), "MMM d, yyyy 'at' h:mm a");
+    const date = new Date(timestamp);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const month = months[date.getMonth()];
+    const day = date.getDate();
+    const year = date.getFullYear();
+    let hour = date.getHours();
+    const minute = date.getMinutes();
+    const ampm = hour >= 12 ? 'pm' : 'am';
+    hour = hour % 12;
+    hour = hour ? hour : 12; // the hour '0' should be '12'
+    const minuteStr = minute < 10 ? '0' + minute : minute;
+    return `${month} ${day}, ${year} at ${hour}:${minuteStr} ${ampm}`;
   };
 
   if (!isClient) {
@@ -522,7 +532,7 @@ export default function Home() {
   }
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={100}>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
             <div className="absolute top-4 left-4 right-4 h-8 flex justify-between items-center z-10">
                <div className="flex-1"></div>
