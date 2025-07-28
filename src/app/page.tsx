@@ -193,28 +193,38 @@ export default function Home() {
   };
 
   const checkActiveFormats = React.useCallback(() => {
-    if (typeof window === "undefined" || !window.document || !editorRef.current)
-      return;
-
+    if (typeof window === "undefined" || !document || !editorRef.current) return;
+  
     const newActiveFormats: Record<string, boolean> = {};
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
-
+  
     const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0) {
-      let node = selection.getRangeAt(0).startContainer;
-      while (node && node !== editorRef.current) {
-        const nodeName = node.nodeName.toLowerCase();
-        if (nodeName.match(/^h[1-3]$/)) {
-          newActiveFormats[nodeName] = true;
-        }
-        if (nodeName === "p") {
-          newActiveFormats.p = true;
-        }
-        node = node.parentNode as HTMLElement;
-      }
+    if (!selection || selection.rangeCount === 0) {
+      setActiveFormats(newActiveFormats);
+      return;
     }
+  
+    let node = selection.getRangeAt(0).startContainer;
+    let blockFormatFound = false;
+  
+    while (node && node !== editorRef.current) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const nodeName = (node as HTMLElement).nodeName.toLowerCase();
+        
+        if (!blockFormatFound && (nodeName.match(/^h[1-3]$/) || nodeName === 'p')) {
+          newActiveFormats[nodeName] = true;
+          blockFormatFound = true; 
+        }
+      }
+      node = node.parentNode;
+    }
+
+    if (!blockFormatFound) {
+        newActiveFormats.p = true;
+    }
+  
     setActiveFormats(newActiveFormats);
   }, []);
 
@@ -266,10 +276,14 @@ export default function Home() {
 };
 
   const handleFormat = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
+    if (command === 'formatBlock' && value) {
+        document.execCommand('formatBlock', false, value);
+    } else {
+        document.execCommand(command, false, value);
+    }
     editorRef.current?.focus();
     checkActiveFormats();
-  };
+};
 
   const handleInsertChecklist = React.useCallback(() => {
     const selection = window.getSelection();
@@ -602,5 +616,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    
