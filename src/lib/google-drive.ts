@@ -19,6 +19,7 @@ const DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/res
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const APP_FOLDER = 'TabulaNote App';
 const NOTES_FILE_NAME = 'tabula-notes.json';
+const TOKEN_STORAGE_KEY = 'tabula-google-token';
 
 let gapiLoaded = false;
 let gisLoaded = false;
@@ -104,16 +105,41 @@ export function signOut() {
   if (token !== null) {
     google.accounts.oauth2.revoke(token.access_token, () => {});
     gapi.client.setToken(null);
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
   }
 }
 
 /**
  * Set the token for gapi client
  */
-export function setToken(token: google.accounts.oauth2.TokenResponse) {
+export function setToken(token: google.accounts.oauth2.TokenResponse | null) {
     gapi.client.setToken(token);
 }
 
+/**
+ * Save token to localStorage
+ */
+export function saveTokenToStorage(token: google.accounts.oauth2.TokenResponse) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify(token));
+}
+
+/**
+ * Get token from localStorage
+ */
+export function getTokenFromStorage(): google.accounts.oauth2.TokenResponse | null {
+    const tokenStr = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (tokenStr) {
+        try {
+            const token = JSON.parse(tokenStr);
+            // Optional: Check for expiry here if needed, though GAPI handles it.
+            return token;
+        } catch (e) {
+            console.error("Failed to parse token from storage", e);
+            return null;
+        }
+    }
+    return null;
+}
 
 /**
  * Load the GAPI client.
@@ -231,3 +257,5 @@ export async function saveNotesToDrive(notes: Note[]): Promise<void> {
         throw new Error(error.result?.error?.message || 'An unknown error occurred while saving to Drive.');
     }
 }
+
+    

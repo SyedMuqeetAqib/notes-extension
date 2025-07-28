@@ -183,13 +183,17 @@ export default function Home() {
             await GoogleDrive.loadGapi();
             setIsGapiLoaded(true);
 
-            const token = gapi.client.getToken();
-            const isLoggedIn = token !== null;
-            setIsLoggedIn(isLoggedIn);
-            setIsDriveReady(isLoggedIn);
+            // Check for existing token
+            const storedToken = GoogleDrive.getTokenFromStorage();
+            if (storedToken) {
+              GoogleDrive.setToken(storedToken);
+              setIsLoggedIn(true);
+              setIsDriveReady(true);
+            }
 
             await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
                 GoogleDrive.setToken(tokenResponse);
+                GoogleDrive.saveTokenToStorage(tokenResponse);
                 setIsLoggedIn(true);
                 setIsDriveReady(true);
                 toast({ title: "Signed in to Google Drive" });
@@ -787,3 +791,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
