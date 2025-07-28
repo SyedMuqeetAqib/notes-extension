@@ -140,15 +140,15 @@ export default function Home() {
 
     // Initialize Google Drive API
     const initDrive = async () => {
-        await GoogleDrive.loadGapi();
-        setIsGapiLoaded(true);
-        await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
-            // This callback handles the token response after user signs in.
-            GoogleDrive.setToken(tokenResponse);
-            setIsLoggedIn(true);
-            setIsDriveReady(true);
-            toast({ title: "Signed in to Google Drive" });
-        });
+      await GoogleDrive.loadGapi();
+      setIsGapiLoaded(true);
+      await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
+        // This callback handles the token response after user signs in.
+        GoogleDrive.setToken(tokenResponse);
+        setIsLoggedIn(true);
+        setIsDriveReady(true);
+        toast({ title: "Signed in to Google Drive" });
+      });
     };
     initDrive();
 

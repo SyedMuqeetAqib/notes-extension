@@ -26,6 +26,7 @@ const NOTES_FILE_NAME = 'tabula-notes.json';
  */
 export async function initGis(clientId: string, callback: (tokenResponse: google.accounts.oauth2.TokenResponse) => void) {
     if (!window.google || !window.google.accounts) {
+        // This should not happen if loadGapi is awaited correctly
         throw new Error("Google Identity Services not loaded");
     }
   
@@ -43,6 +44,7 @@ export function requestToken() {
     if (!tokenClient) {
         throw new Error("Token client not initialized");
     }
+    // Settle this promise in the response callback for requestAccessToken()
     tokenClient.requestAccessToken();
 }
 
@@ -71,7 +73,7 @@ export function setToken(token: google.accounts.oauth2.TokenResponse) {
  */
 export function loadGapi(): Promise<void> {
     return new Promise((resolve, reject) => {
-        gapi.load('client', () => {
+        gapi.load('client:auth2', () => {
             gapi.client.init({
                 apiKey: GOOGLE_API_KEY,
                 discoveryDocs: [DISCOVERY_DOC],
