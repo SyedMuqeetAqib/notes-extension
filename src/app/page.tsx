@@ -193,48 +193,50 @@ export default function Home() {
   };
 
   const checkActiveFormats = React.useCallback(() => {
-    if (typeof window === "undefined" || !document || !editorRef.current) return;
-  
+    if (typeof window === "undefined" || !document) return;
+    
     const newActiveFormats: Record<string, boolean> = {};
-    const selection = window.getSelection();
-  
-    // Check inline formats
+    
+    // Check for inline styles first
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
-  
-    if (!selection || selection.rangeCount === 0) {
-      setActiveFormats(newActiveFormats);
-      return;
-    }
-  
-    const blockTags = ['p', 'h1', 'h2', 'h3'];
-    let parentNode: Node | null = selection.getRangeAt(0).startContainer;
 
-    // Traverse up to find the block-level element (p, h1, etc.) that is a direct child of the editor
-    while (parentNode && parentNode !== editorRef.current) {
-        if (parentNode.nodeType === Node.ELEMENT_NODE) {
-            const element = parentNode as HTMLElement;
-            if (blockTags.includes(element.tagName.toLowerCase()) && element.parentNode === editorRef.current) {
-                // Reset all block formats
-                blockTags.forEach(tag => newActiveFormats[tag] = false);
-                // Set the found tag as active
-                newActiveFormats[element.tagName.toLowerCase()] = true;
-                setActiveFormats(newActiveFormats);
-                return; // Exit once found
+    // Check for block styles
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+        setActiveFormats(newActiveFormats);
+        return;
+    }
+
+    let node = selection.focusNode;
+    const blockTags = ['p', 'h1', 'h2', 'h3'];
+    let blockTagFound = false;
+
+    // Traverse up from the cursor's position to find the parent block element
+    while (node && node !== editorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            const element = node as HTMLElement;
+            const tagName = element.tagName.toLowerCase();
+            if (blockTags.includes(tagName) && element.parentNode === editorRef.current) {
+                blockTags.forEach(tag => newActiveFormats[tag] = false); // Reset all
+                newActiveFormats[tagName] = true; // Set the found one
+                blockTagFound = true;
+                break; // Exit the loop once found
             }
         }
-        parentNode = parentNode.parentNode;
+        node = node.parentNode;
     }
 
-    // If no specific block tag is found, default to paragraph (this might happen in an empty editor)
-    if (!blockTags.some(tag => newActiveFormats[tag])) {
+    // If no specific block tag is found (e.g., in an empty or new editor), default to 'p'
+    if (!blockTagFound) {
         blockTags.forEach(tag => newActiveFormats[tag] = false);
         newActiveFormats.p = true;
     }
-    
+
     setActiveFormats(newActiveFormats);
-  }, []);
+}, []);
+
 
   // Set up event listeners for format checking
   React.useEffect(() => {
@@ -243,14 +245,16 @@ export default function Home() {
       const handler = () => {
         checkActiveFormats();
       };
+      // 'selectionchange' is the most reliable event for cursor moves via mouse or keyboard
       document.addEventListener("selectionchange", handler);
-      editor.addEventListener("click", handler);
       editor.addEventListener("keyup", handler);
+      editor.addEventListener("click", handler);
+
 
       return () => {
         document.removeEventListener("selectionchange", handler);
-        editor.removeEventListener("click", handler);
         editor.removeEventListener("keyup", handler);
+        editor.removeEventListener("click", handler);
       };
     }
   }, [checkActiveFormats]);
