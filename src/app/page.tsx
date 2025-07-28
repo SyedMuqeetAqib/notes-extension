@@ -134,7 +134,7 @@ export default function Home() {
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const checkActiveFormats = React.useCallback(() => {
-    if (typeof window === 'undefined' || !document || !editorRef.current) return;
+    if (typeof window === 'undefined' || !document.getSelection) return;
   
     const newActiveFormats: Record<string, boolean> = {};
     
@@ -156,7 +156,7 @@ export default function Home() {
             newActiveFormats.h1 = tagName === 'h1';
             newActiveFormats.h2 = tagName === 'h2';
             newActiveFormats.h3 = tagName === 'h3';
-            break; 
+            break;
           }
         }
         node = node.parentNode;
@@ -196,11 +196,6 @@ export default function Home() {
     };
     initDrive();
 
-    // Set up event listeners for format checking
-    document.addEventListener("selectionchange", checkActiveFormats);
-    document.addEventListener("keyup", checkActiveFormats);
-    document.addEventListener("click", checkActiveFormats);
-
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
@@ -227,6 +222,7 @@ export default function Home() {
             img.src = src;
             img.className = 'pasted-image';
             img.alt = 'Pasted content';
+            img.style.maxHeight = '50vh'; // Apply style directly
     
             const overlay = document.createElement('div');
             overlay.className = 'pasted-image-overlay';
@@ -277,14 +273,16 @@ export default function Home() {
       }
     };
     
-
     const editor = editorRef.current;
     editor?.addEventListener("paste", handlePaste);
+    document.addEventListener("selectionchange", checkActiveFormats);
+    editor?.addEventListener("keyup", checkActiveFormats);
+    editor?.addEventListener("click", checkActiveFormats);
 
     return () => {
         document.removeEventListener("selectionchange", checkActiveFormats);
-        document.removeEventListener("keyup", checkActiveFormats);
-        document.removeEventListener("click", checkActiveFormats);
+        editor?.removeEventListener("keyup", checkActiveFormats);
+        editor?.removeEventListener("click", checkActiveFormats);
         editor?.removeEventListener("paste", handlePaste);
     };
 
@@ -784,3 +782,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    

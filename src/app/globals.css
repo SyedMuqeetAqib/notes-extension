@@ -85,7 +85,6 @@
     @apply relative inline-block;
   }
   .pasted-image {
-    max-height: 50vh;
     max-width: 100%;
     @apply rounded-lg shadow-md border block w-auto h-auto;
   }
@@ -96,3 +95,5 @@
     @apply bg-white/80 hover:bg-white text-black h-8 w-8 inline-flex items-center justify-center rounded-full;
   }
 }
+
+    
