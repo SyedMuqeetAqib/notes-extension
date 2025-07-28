@@ -4,7 +4,7 @@
 // A lot of this code is from the Google Drive API documentation
 // https://developers.google.com/drive/api/guides/file
 
-type Note = {
+export type Note = {
   id: string;
   name: string;
   content: string;
@@ -255,6 +255,43 @@ export async function saveNotesToDrive(notes: Note[]): Promise<void> {
         console.error('Error saving notes to drive', err);
         const error = err as { result?: { error?: { message: string } } };
         throw new Error(error.result?.error?.message || 'An unknown error occurred while saving to Drive.');
+    }
+}
+
+export async function loadNotesFromDrive(): Promise<Note[] | null> {
+    if (!gapi.client.getToken()) {
+        throw new Error("Not signed in");
+    }
+
+    const folderId = await getAppFolderId();
+    if (!folderId) {
+        return null; // No app folder, so no notes to load
+    }
+
+    const fileId = await getNotesFileId(folderId);
+    if (!fileId) {
+        return null; // No notes file, so no notes to load
+    }
+
+    try {
+        const response = await gapi.client.drive.files.get({
+            fileId: fileId,
+            alt: 'media',
+        });
+
+        if (response.status !== 200) {
+            throw new Error(`Failed to load file: ${response.body}`);
+        }
+
+        // The body is a string, so we need to parse it as JSON.
+        // GAPI types are a bit tricky here, so we cast to 'any' first.
+        const notes = JSON.parse(response.body as any) as Note[];
+        return notes;
+
+    } catch (err) {
+        console.error('Error loading notes from drive', err);
+        const error = err as { result?: { error?: { message: string } } };
+        throw new Error(error.result?.error?.message || 'An unknown error occurred while loading from Drive.');
     }
 }
 

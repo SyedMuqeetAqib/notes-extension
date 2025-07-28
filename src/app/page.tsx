@@ -17,6 +17,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Pencil, Info, Copy, Download as DownloadIcon } from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
+import type { Note } from "@/lib/google-drive";
 
 
 const LazySummaryDialog = dynamic(() => import('@/components/summary-dialog'));
@@ -30,14 +31,6 @@ const LazyToolbar = dynamic(
     ), // Placeholder with same height
   }
 );
-
-type Note = {
-  id: string;
-  name:string;
-  content: string;
-  createdAt: number;
-  lastUpdatedAt: number;
-};
 
 // This function runs on the client and tries to get the initial state
 // synchronously from localStorage. This avoids a flicker or loading state.
@@ -166,6 +159,70 @@ export default function Home() {
     setActiveFormats(newActiveFormats);
   }, []);
 
+  const handleCloudSync = React.useCallback(async (showToast = true) => {
+    if (!isGapiLoaded) {
+      toast({ title: "Google API not loaded yet.", variant: "destructive" });
+      return;
+    }
+  
+    if (!isLoggedIn) {
+      GoogleDrive.requestToken();
+      return;
+    }
+  
+    try {
+      if (showToast) {
+        toast({ title: "Syncing notes with Google Drive..." });
+      }
+  
+      // 1. Fetch notes from Drive
+      const cloudNotes = await GoogleDrive.loadNotesFromDrive();
+  
+      // 2. Merge local and cloud notes
+      const localNotes = JSON.parse(localStorage.getItem('tabula-notes') || '[]') as Note[];
+      const combinedNotes: { [key: string]: Note } = {};
+  
+      // Add all local notes to the map
+      for (const note of localNotes) {
+        combinedNotes[note.id] = note;
+      }
+  
+      // Add/update with cloud notes
+      if (cloudNotes) {
+        for (const note of cloudNotes) {
+          // If note exists, keep the one that was updated more recently
+          if (combinedNotes[note.id]) {
+            if (note.lastUpdatedAt > combinedNotes[note.id].lastUpdatedAt) {
+              combinedNotes[note.id] = note;
+            }
+          } else {
+            // If note doesn't exist locally, add it
+            combinedNotes[note.id] = note;
+          }
+        }
+      }
+  
+      const mergedNotes = Object.values(combinedNotes);
+  
+      // 3. Save merged notes back to Drive
+      await GoogleDrive.saveNotesToDrive(mergedNotes);
+  
+      // 4. Update local state with merged notes
+      setNotes(mergedNotes);
+      localStorage.setItem("tabula-notes", JSON.stringify(mergedNotes));
+  
+      if (showToast) {
+        toast({ title: "Sync successful!", description: "Your notes are up to date." });
+      }
+    } catch (e) {
+      console.error(e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      if (showToast) {
+        toast({ title: "Sync Failed", description: errorMessage, variant: "destructive" });
+      }
+    }
+  }, [isGapiLoaded, isLoggedIn, toast]);
+
   React.useEffect(() => {
     // This effect runs once on mount to set the initial client state
     setIsClient(true);
@@ -189,6 +246,8 @@ export default function Home() {
               GoogleDrive.setToken(storedToken);
               setIsLoggedIn(true);
               setIsDriveReady(true);
+              // Perform a silent sync on load
+              handleCloudSync(false);
             }
 
             await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
@@ -197,6 +256,8 @@ export default function Home() {
                 setIsLoggedIn(true);
                 setIsDriveReady(true);
                 toast({ title: "Signed in to Google Drive" });
+                // Sync after successful login
+                handleCloudSync();
             });
         } catch (error) {
             console.error("Failed to initialize Google Drive", error);
@@ -295,7 +356,7 @@ export default function Home() {
         editor?.removeEventListener("paste", handlePaste);
     };
 
-  }, [toast, checkActiveFormats]);
+  }, [toast, checkActiveFormats, handleCloudSync]);
 
   // Load note content when activeNoteId changes
   React.useEffect(() => {
@@ -621,26 +682,6 @@ export default function Home() {
     checkActiveFormats();
   };
 
-  const handleCloudSync = async () => {
-    if (!isGapiLoaded) {
-        toast({ title: "Google API not loaded yet.", variant: "destructive" });
-        return;
-    }
-    if (!isLoggedIn) {
-        GoogleDrive.requestToken(); // This will trigger the GIS popup
-    } else {
-        try {
-            toast({ title: "Syncing notes to Google Drive..." });
-            await GoogleDrive.saveNotesToDrive(notes);
-            toast({ title: "Sync successful!", description: "Your notes are saved in your Google Drive." });
-        } catch (e) {
-            console.error(e);
-            const errorMessage = e instanceof Error ? e.message : String(e);
-            toast({ title: "Sync Failed", description: errorMessage, variant: "destructive" });
-        }
-    }
-  };
-
   const handleSignOut = () => {
     GoogleDrive.signOut();
     setIsLoggedIn(false);
@@ -767,7 +808,7 @@ export default function Home() {
             handleSummarize,
             handleExport,
             toggleTheme,
-            handleCloudSync,
+            handleCloudSync: () => handleCloudSync(true),
             handleSignOut,
           }}
         />}
