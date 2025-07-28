@@ -1,9 +1,11 @@
-
 {
   "manifest_version": 3,
   "name": "TabulaNote",
   "version": "1.0",
   "description": "A new tab for your thoughts.",
+  "permissions": [
+    "storage"
+  ],
   "chrome_url_overrides": {
     "newtab": "index.html"
   },
@@ -11,5 +13,8 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   }
 }

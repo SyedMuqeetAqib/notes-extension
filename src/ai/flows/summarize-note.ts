@@ -1,5 +1,4 @@
 // Summarize long notes with an AI tool for quick review.
-'use server';
 /**
  * @fileOverview A note summarization AI agent.
  *
@@ -8,38 +7,40 @@
  * - SummarizeNoteOutput - The return type for the summarizeNote function.
  */
 
-import {ai} from '@/ai/genkit';
-import {z} from 'genkit';
-
-const SummarizeNoteInputSchema = z.object({
-  note: z.string().describe('The note to summarize.'),
-});
-export type SummarizeNoteInput = z.infer<typeof SummarizeNoteInputSchema>;
-
-const SummarizeNoteOutputSchema = z.object({
-  summary: z.string().describe('The summary of the note.'),
-});
-export type SummarizeNoteOutput = z.infer<typeof SummarizeNoteOutputSchema>;
-
-export async function summarizeNote(input: SummarizeNoteInput): Promise<SummarizeNoteOutput> {
-  return summarizeNoteFlow(input);
+export interface SummarizeNoteInput {
+  note: string;
 }
 
-const prompt = ai.definePrompt({
-  name: 'summarizeNotePrompt',
-  input: {schema: SummarizeNoteInputSchema},
-  output: {schema: SummarizeNoteOutputSchema},
-  prompt: `Summarize the following note:\n\n{{note}}`,
-});
+export interface SummarizeNoteOutput {
+  summary: string;
+}
 
-const summarizeNoteFlow = ai.defineFlow(
-  {
-    name: 'summarizeNoteFlow',
-    inputSchema: SummarizeNoteInputSchema,
-    outputSchema: SummarizeNoteOutputSchema,
-  },
-  async input => {
-    const {output} = await prompt(input);
-    return output!;
+export async function summarizeNote(
+  input: SummarizeNoteInput
+): Promise<SummarizeNoteOutput> {
+  try {
+    // For static export, we'll use a simple client-side summarization
+    // This is a basic implementation - you may want to integrate with a client-side AI service
+    const { note } = input;
+
+    // Simple summarization logic for demonstration
+    // In a real implementation, you'd want to use a client-side AI library or API
+    const sentences = note.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+    const keyPoints = sentences.slice(0, 3).map((s) => s.trim());
+
+    const summary =
+      keyPoints.length > 0
+        ? `Key points:\n${keyPoints
+            .map((point, i) => `${i + 1}. ${point}`)
+            .join("\n")}`
+        : "Note is too short to summarize meaningfully.";
+
+    return { summary };
+  } catch (error) {
+    console.error("Failed to summarize note:", error);
+    return {
+      summary:
+        "Sorry, I couldn't generate a summary for this note. Please try again.",
+    };
   }
-);
+}
