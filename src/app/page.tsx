@@ -17,7 +17,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { Pencil, Info, Copy, Download as DownloadIcon } from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
-import { renderToStaticMarkup } from "react-dom/server";
 
 
 const LazySummaryDialog = dynamic(() => import('@/components/summary-dialog'));
@@ -100,34 +99,6 @@ const getInitialState = () => {
 };
 
 const GOOGLE_CLIENT_ID = '284239172338-oiblqhmj5e48ippdo9bvet6e8ps2bm8r.apps.googleusercontent.com';
-
-const ImageWrapper = ({ src }: { src: string }) => (
-    <div className="pasted-image-wrapper" contentEditable={false}>
-      <div className="pasted-image-container group">
-        <img src={src} className="pasted-image" alt="Pasted content" />
-        <div className="pasted-image-overlay">
-          <div className="flex gap-2">
-            <Button
-              size="icon"
-              className="pasted-image-button"
-              data-action="copy-image"
-              data-src={src}
-            >
-              <Copy className="w-4 h-4" />
-            </Button>
-            <Button
-              size="icon"
-              className="pasted-image-button"
-              data-action="download-image"
-              data-src={src}
-            >
-              <DownloadIcon className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
 
 export default function Home() {
   const [isClient, setIsClient] = React.useState(false);
@@ -233,41 +204,70 @@ export default function Home() {
     const handlePaste = (e: ClipboardEvent) => {
       const items = e.clipboardData?.items;
       if (!items) return;
-
+    
       for (let i = 0; i < items.length; i++) {
         if (items[i].type.indexOf("image") !== -1) {
           e.preventDefault();
           const file = items[i].getAsFile();
           if (!file) continue;
-
+    
           const reader = new FileReader();
           reader.onload = (event) => {
             const src = event.target?.result as string;
             if (!src) return;
+    
+            const imageWrapper = document.createElement('div');
+            imageWrapper.className = 'pasted-image-wrapper';
+            imageWrapper.contentEditable = 'false';
+    
+            const imageContainer = document.createElement('div');
+            imageContainer.className = 'pasted-image-container group';
+    
+            const img = document.createElement('img');
+            img.src = src;
+            img.className = 'pasted-image';
+            img.alt = 'Pasted content';
+    
+            const overlay = document.createElement('div');
+            overlay.className = 'pasted-image-overlay';
+    
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'flex gap-2';
+    
+            const copyButton = document.createElement('button');
+            copyButton.className = 'pasted-image-button'
+            copyButton.dataset.action = 'copy-image';
+            copyButton.dataset.src = src;
+            copyButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>`;
             
-            // Use React's server-side rendering to create the HTML string
-            const imageWrapperHtml = renderToStaticMarkup(<ImageWrapper src={src} />);
-            
+            const downloadButton = document.createElement('button');
+            downloadButton.className = 'pasted-image-button';
+            downloadButton.dataset.action = 'download-image';
+            downloadButton.dataset.src = src;
+            downloadButton.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>`;
+    
+            buttonContainer.appendChild(copyButton);
+            buttonContainer.appendChild(downloadButton);
+            overlay.appendChild(buttonContainer);
+            imageContainer.appendChild(img);
+            imageContainer.appendChild(overlay);
+            imageWrapper.appendChild(imageContainer);
+    
             const selection = window.getSelection();
             if (selection && selection.rangeCount > 0) {
               const range = selection.getRangeAt(0);
-              const tempDiv = document.createElement("div");
-              tempDiv.innerHTML = imageWrapperHtml;
-              const imageNode = tempDiv.firstChild;
-              if (imageNode) {
-                  range.deleteContents();
-                  range.insertNode(imageNode);
-                  // Move cursor after the image
-                  const newRange = document.createRange();
-                  newRange.setStartAfter(imageNode);
-                  newRange.collapse(true);
-                  selection.removeAllRanges();
-                  selection.addRange(newRange);
-              }
+              range.deleteContents();
+              range.insertNode(imageWrapper);
+              // Move cursor after the image
+              const newRange = document.createRange();
+              newRange.setStartAfter(imageWrapper);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
             } else {
-              editorRef.current!.innerHTML += imageWrapperHtml;
+                editorRef.current!.appendChild(imageWrapper);
             }
-            
+    
             // Trigger save after paste
             handleInput({ currentTarget: editorRef.current } as any);
           };
@@ -276,6 +276,7 @@ export default function Home() {
         }
       }
     };
+    
 
     const editor = editorRef.current;
     editor?.addEventListener("paste", handlePaste);
@@ -589,22 +590,26 @@ export default function Home() {
 
   const handleEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement;
-    const action = target.closest('[data-action]')?.getAttribute('data-action');
-    const src = target.closest('[data-src]')?.getAttribute('data-src');
-
-    if (action && src) {
+    const actionTarget = target.closest('[data-action]');
+  
+    if (actionTarget) {
+      const action = actionTarget.getAttribute('data-action');
+      const src = actionTarget.getAttribute('data-src');
+      if (action && src) {
         event.preventDefault();
+        event.stopPropagation();
         if (action === 'copy-image') {
-            handleCopyImage(src);
+          handleCopyImage(src);
         } else if (action === 'download-image') {
-            handleDownloadImage(src);
+          handleDownloadImage(src);
         }
         return;
+      }
     }
-    
+  
     if (target.tagName === 'IMG' && target.classList.contains('pasted-image')) {
-        setSelectedImageSrc(target.getAttribute('src'));
-        setIsImageDialogOpen(true);
+      setSelectedImageSrc(target.getAttribute('src'));
+      setIsImageDialogOpen(true);
     }
     checkActiveFormats();
   };
