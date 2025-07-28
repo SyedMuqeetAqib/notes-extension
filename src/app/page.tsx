@@ -5,14 +5,7 @@ import * as React from "react";
 import dynamic from "next/dynamic";
 import { summarizeNote } from "@/ai/flows/summarize-note";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Tooltip,
   TooltipContent,
@@ -21,45 +14,19 @@ import {
 } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
-import { Input } from "@/components/ui/input";
+
+const LazySummaryDialog = dynamic(() => import('@/components/summary-dialog'));
+const LazyToolbar = dynamic(
+  () => import("@/components/toolbar").then((mod) => mod.Toolbar),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 h-[52px]" />
+    ), // Placeholder with same height
+  }
+);
 
 // --- SVG Icons ---
-const Sparkles = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    {...props}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275z" />
-    <path d="M5 3v4" />
-    <path d="M19 17v4" />
-    <path d="M3 5h4" />
-    <path d="M17 19h4" />
-  </svg>
-);
-const Loader2 = (props: React.SVGProps<SVGSVGElement>) => (
-  <svg
-    {...props}
-    xmlns="http://www.w3.org/2000/svg"
-    width="24"
-    height="24"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-  >
-    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-  </svg>
-);
 const Pencil = (props: React.SVGProps<SVGSVGElement>) => (
   <svg
     {...props}
@@ -96,15 +63,6 @@ const Info = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-const LazyToolbar = dynamic(
-  () => import("@/components/toolbar").then((mod) => mod.Toolbar),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="fixed bottom-4 right-4 md:bottom-8 md:right-8 h-[52px]" />
-    ), // Placeholder with same height
-  }
-);
 
 type Note = {
   id: string;
@@ -117,9 +75,14 @@ type Note = {
 // synchronously from localStorage. This avoids a flicker or loading state.
 const getInitialState = () => {
   if (typeof window === "undefined") {
-    return null;
+    return {
+      activeNoteId: null,
+      initialContent: "<p><br></p>",
+      notes: [],
+      theme: "light",
+      characterCount: 0,
+    };
   }
-
   try {
     const theme = localStorage.getItem("tabula-theme") || "light";
     let notes: Note[] = [];
@@ -132,11 +95,15 @@ const getInitialState = () => {
 
     let activeNoteId = localStorage.getItem("tabula-last-active-note");
     let initialContent = "<p><br></p>";
+    let characterCount = 0;
 
     if (activeNoteId) {
       const savedNote = localStorage.getItem(`tabula-note-${activeNoteId}`);
       if (savedNote) {
         initialContent = savedNote;
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = savedNote;
+        characterCount = tempDiv.innerText.length;
       } else {
         // The active note content is missing, reset
         activeNoteId = null;
@@ -157,51 +124,42 @@ const getInitialState = () => {
       localStorage.setItem("tabula-notes-index", JSON.stringify(notes));
       localStorage.setItem(`tabula-note-${activeNoteId}`, initialContent);
       localStorage.setItem("tabula-last-active-note", activeNoteId);
+      characterCount = "Welcome to TabulaNote!".length;
     }
 
-    return { activeNoteId, initialContent, notes, theme };
+    return { activeNoteId, initialContent, notes, theme, characterCount };
   } catch (e) {
     console.error("Failed to initialize state from localStorage", e);
     // Return a default safe state
+    const fallbackNote: Note = {
+        id: "fallback",
+        name: "Error Note",
+        createdAt: Date.now(),
+        lastUpdatedAt: Date.now(),
+    };
     return {
       activeNoteId: "fallback",
       initialContent: "<p>Error loading note.</p>",
-      notes: [
-        {
-          id: "fallback",
-          name: "Error Note",
-          createdAt: Date.now(),
-          lastUpdatedAt: Date.now(),
-        },
-      ],
+      notes: [fallbackNote],
       theme: "light",
+      characterCount: "Error loading note.".length,
     };
   }
 };
 
 export default function Home() {
   const [isClient, setIsClient] = React.useState(false);
+  const initialStateRef = React.useRef(getInitialState());
 
-  // Use a ref to hold initial state to prevent re-running getInitialState
-  const initialStateRef = React.useRef(isClient ? getInitialState() : null);
-
-  const [notes, setNotes] = React.useState<Note[]>(
-    initialStateRef.current?.notes || []
-  );
-  const [activeNoteId, setActiveNoteId] = React.useState<string | null>(
-    initialStateRef.current?.activeNoteId || null
-  );
-  const [theme, setTheme] = React.useState(
-    initialStateRef.current?.theme || "light"
-  );
-  const [characterCount, setCharacterCount] = React.useState(0);
+  const [notes, setNotes] = React.useState<Note[]>(initialStateRef.current.notes);
+  const [activeNoteId, setActiveNoteId] = React.useState<string | null>(initialStateRef.current.activeNoteId);
+  const [theme, setTheme] = React.useState(initialStateRef.current.theme);
+  const [characterCount, setCharacterCount] = React.useState(initialStateRef.current.characterCount);
 
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = React.useState(false);
-  const [activeFormats, setActiveFormats] = React.useState<
-    Record<string, boolean>
-  >({});
+  const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
 
   const [isRenaming, setIsRenaming] = React.useState(false);
   const [renameValue, setRenameValue] = React.useState("");
@@ -211,46 +169,46 @@ export default function Home() {
   const { toast } = useToast();
 
   React.useEffect(() => {
+    // This effect runs once on mount to set the initial client state
+    // and ensure the editor has content.
     setIsClient(true);
-  }, []);
-
-  // Set initial content and theme on mount
-  React.useEffect(() => {
-    if (isClient) {
-      const state = getInitialState();
-      if (state) {
-        setNotes(state.notes);
-        setActiveNoteId(state.activeNoteId);
-        setTheme(state.theme);
-        if (editorRef.current) {
-          editorRef.current.innerHTML = state.initialContent;
-          setCharacterCount(editorRef.current.innerText.length);
-        }
-        document.documentElement.classList.toggle(
-          "dark",
-          state.theme === "dark"
-        );
-      }
+    const state = getInitialState();
+    setNotes(state.notes);
+    setActiveNoteId(state.activeNoteId);
+    setTheme(state.theme);
+    setCharacterCount(state.characterCount);
+    
+    if (editorRef.current) {
+        editorRef.current.innerHTML = state.initialContent;
     }
-  }, [isClient]);
+    document.documentElement.classList.toggle(
+        "dark",
+        state.theme === "dark"
+    );
+
+  }, []);
 
   // Load note content when activeNoteId changes (e.g., switching notes)
   React.useEffect(() => {
-    // Prevent running on initial state set
-    if (!activeNoteId || activeNoteId === initialStateRef.current?.activeNoteId)
-      return;
+    // This effect should only run when activeNoteId changes, not on initial mount.
+    if (!isClient || !activeNoteId) return;
 
     try {
       const savedNote = localStorage.getItem(`tabula-note-${activeNoteId}`);
       if (editorRef.current) {
-        editorRef.current.innerHTML = savedNote || "<p><br></p>";
-        setCharacterCount(editorRef.current.innerText.length);
+        const newContent = savedNote || "<p><br></p>";
+        editorRef.current.innerHTML = newContent;
+        // Create a temporary div to accurately get innerText
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = newContent;
+        setCharacterCount(tempDiv.innerText.length);
       }
       localStorage.setItem("tabula-last-active-note", activeNoteId);
     } catch (error) {
       console.error("Failed to load note:", error);
     }
-  }, [activeNoteId]);
+  }, [activeNoteId, isClient]);
+  
 
   const toggleTheme = () => {
     const newTheme = theme === "light" ? "dark" : "light";
@@ -350,7 +308,7 @@ export default function Home() {
           // Already in a checklist item, do nothing
           return;
         }
-        node = node.parentNode;
+        node = node.parentNode as HTMLElement;
       }
     }
 
@@ -577,6 +535,13 @@ export default function Home() {
     }
   };
 
+  const handleCloudSync = () => {
+    toast({
+        title: "Coming Soon!",
+        description: "Google Drive sync is not yet implemented.",
+    });
+  };
+
   // Keyboard shortcuts
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -638,29 +603,10 @@ export default function Home() {
   const formatDate = (timestamp: number) => {
     const date = new Date(timestamp);
     const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
-    const month = months[date.getMonth()];
-    const day = date.getDate();
-    const year = date.getFullYear();
-    let hour = date.getHours();
-    const minute = date.getMinutes();
-    const ampm = hour >= 12 ? "pm" : "am";
-    hour = hour % 12;
-    hour = hour ? hour : 12; // the hour '0' should be '12'
-    const minuteStr = minute < 10 ? "0" + minute : minute;
-    return `${month} ${day}, ${year} at ${hour}:${minuteStr} ${ampm}`;
+    return `${months[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
   };
 
   if (!isClient) {
@@ -686,8 +632,8 @@ export default function Home() {
                     onKeyDown={(e) => e.key === "Enter" && handleRenameSubmit()}
                     className="w-auto h-8 text-lg font-semibold text-center bg-transparent border-primary"
                     style={{
-                      width: `${renameValue.length * 10 + 40}px`,
                       minWidth: "100px",
+                      maxWidth: "50vw",
                     }}
                   />
                 ) : (
@@ -740,13 +686,13 @@ export default function Home() {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
-          className="w-full h-full min-h-screen pt-16 p-8 md:p-16 lg:p-24 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
           aria-label="Note editor"
         />
 
-        <LazyToolbar
+        {isClient && <LazyToolbar
           {...{
             notes,
             activeNoteId,
@@ -760,49 +706,19 @@ export default function Home() {
             handleSummarize,
             handleExport,
             toggleTheme,
+            handleCloudSync,
           }}
-        />
+        />}
 
-        <Dialog
-          open={isSummaryDialogOpen}
-          onOpenChange={setIsSummaryDialogOpen}
-        >
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-accent" />
-                AI Summary
-              </DialogTitle>
-              <DialogDescription>
-                Here's a summary of your note, generated by AI.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4 min-h-[10rem] flex items-center justify-center">
-              {isSummaryLoading ? (
-                <div className="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>Generating summary...</span>
-                </div>
-              ) : (
-                <p className="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                  {summary}
-                </p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                onClick={() => setIsSummaryDialogOpen(false)}
-                variant="secondary"
-              >
-                Close
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        {isClient && <LazySummaryDialog 
+            isOpen={isSummaryDialogOpen}
+            onOpenChange={setIsSummaryDialogOpen}
+            isLoading={isSummaryLoading}
+            summary={summary}
+        />}
+
         <Toaster />
       </main>
     </TooltipProvider>
   );
 }
-
-    

@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "TabulaNote",
   "version": "1.0",
+  "key":"flkpmnjlbjoaioadeeijabjdfgmehagp",
   "description": "A new tab for your thoughts.",
   "permissions": [
     "storage"

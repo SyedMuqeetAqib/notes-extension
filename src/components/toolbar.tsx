@@ -22,12 +22,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { AlertDialogTrigger } from "@radix-ui/react-alert-dialog";
 
 // --- SVG Icons ---
 const Bold = (props: React.SVGProps<SVGSVGElement>) => (
@@ -84,6 +84,9 @@ const Trash2 = (props: React.SVGProps<SVGSVGElement>) => (
 const Folder = (props: React.SVGProps<SVGSVGElement>) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L8.6 3.3a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
 );
+const Cloud = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>
+);
 
 type Note = {
     id: string;
@@ -105,6 +108,7 @@ type Note = {
     handleSummarize: () => void;
     handleExport: () => void;
     toggleTheme: () => void;
+    handleCloudSync: () => void;
   };
 
 export function Toolbar({
@@ -120,6 +124,7 @@ export function Toolbar({
     handleSummarize,
     handleExport,
     toggleTheme,
+    handleCloudSync,
 }: ToolbarProps) {
     return (
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -295,6 +300,10 @@ export function Toolbar({
                 <TooltipContent>More</TooltipContent>
             </Tooltip>
             <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleCloudSync}>
+                    <Cloud className="w-4 h-4 mr-2" />
+                    <span>Sync to Cloud</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleExport}>
                 <Download className="w-4 h-4 mr-2" />
                 <span>Export as .txt</span>
