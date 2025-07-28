@@ -285,11 +285,17 @@ export default function Home() {
     }, 500); // Debounce time in ms
 };
 
-  const handleFormat = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
+const handleFormat = (command: string, value?: string) => {
+    if (command === "formatBlock") {
+        document.execCommand(command, false, value);
+    } else {
+        document.execCommand(command, false, value);
+    }
+    
     editorRef.current?.focus();
     checkActiveFormats();
 };
+
 
   const handleInsertChecklist = React.useCallback(() => {
     const selection = window.getSelection();
@@ -584,7 +590,7 @@ export default function Home() {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
-          className="editor-content w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground editor-content"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
           aria-label="Note editor"
