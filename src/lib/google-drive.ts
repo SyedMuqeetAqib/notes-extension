@@ -294,5 +294,3 @@ export async function loadNotesFromDrive(): Promise<Note[] | null> {
         throw new Error(error.result?.error?.message || 'An unknown error occurred while loading from Drive.');
     }
 }
-
-    
