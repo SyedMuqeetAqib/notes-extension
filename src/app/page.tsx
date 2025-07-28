@@ -20,6 +20,7 @@ import * as GoogleDrive from "@/lib/google-drive";
 
 
 const LazySummaryDialog = dynamic(() => import('@/components/summary-dialog'));
+const LazyImageDialog = dynamic(() => import('@/components/image-dialog'));
 const LazyToolbar = dynamic(
   () => import("@/components/toolbar").then((mod) => mod.Toolbar),
   {
@@ -113,6 +114,10 @@ export default function Home() {
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = React.useState(false);
+
+  const [isImageDialogOpen, setIsImageDialogOpen] = React.useState(false);
+  const [selectedImageSrc, setSelectedImageSrc] = React.useState<string | null>(null);
+
   const [activeFormats, setActiveFormats] = React.useState<Record<string, boolean>>({});
 
   const [isRenaming, setIsRenaming] = React.useState(false);
@@ -129,32 +134,40 @@ export default function Home() {
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const checkActiveFormats = React.useCallback(() => {
-    if (typeof window === "undefined" || !document) return;
-
+    if (typeof window === 'undefined' || !document || !editorRef.current) return;
+  
     const newActiveFormats: Record<string, boolean> = {};
     
-    // Check for inline styles
+    // Check inline formats
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
-    
-    // Check for block styles
+  
+    // Check block formats
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
-        let node = selection.focusNode;
-        while (node && node !== editorRef.current) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                const element = node as HTMLElement;
-                const tagName = element.tagName.toLowerCase();
-                if (['p', 'h1', 'h2', 'h3'].includes(tagName)) {
-                    newActiveFormats[tagName] = true;
-                    break; 
-                }
-            }
-            node = node.parentNode;
+      let node = selection.focusNode;
+      // Start from the current node and go up to the editor
+      while (node && node !== editorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          const tagName = element.tagName.toLowerCase();
+          if (['p', 'h1', 'h2', 'h3'].includes(tagName)) {
+            // Reset all block formats
+            newActiveFormats.p = false;
+            newActiveFormats.h1 = false;
+            newActiveFormats.h2 = false;
+            newActiveFormats.h3 = false;
+            // Set the active one
+            newActiveFormats[tagName] = true;
+            // Found the block format, no need to go further up
+            break; 
+          }
         }
+        node = node.parentNode;
+      }
     }
-
+  
     setActiveFormats(newActiveFormats);
   }, []);
 
@@ -193,10 +206,54 @@ export default function Home() {
     document.addEventListener("keyup", checkActiveFormats);
     document.addEventListener("click", checkActiveFormats);
 
+    const handlePaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf("image") !== -1) {
+          e.preventDefault();
+          const file = items[i].getAsFile();
+          if (!file) continue;
+
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = document.createElement("img");
+            img.src = event.target?.result as string;
+            img.classList.add("pasted-image");
+            
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount > 0) {
+              const range = selection.getRangeAt(0);
+              range.deleteContents();
+              range.insertNode(img);
+              // Move cursor after the image
+              const newRange = document.createRange();
+              newRange.setStartAfter(img);
+              newRange.collapse(true);
+              selection.removeAllRanges();
+              selection.addRange(newRange);
+            } else {
+              editorRef.current?.appendChild(img);
+            }
+            
+            // Trigger save after paste
+            handleInput({ currentTarget: editorRef.current } as any);
+          };
+          reader.readAsDataURL(file);
+          break; // Handle first image only
+        }
+      }
+    };
+
+    const editor = editorRef.current;
+    editor?.addEventListener("paste", handlePaste);
+
     return () => {
         document.removeEventListener("selectionchange", checkActiveFormats);
         document.removeEventListener("keyup", checkActiveFormats);
         document.removeEventListener("click", checkActiveFormats);
+        editor?.removeEventListener("paste", handlePaste);
     };
 
   }, [toast, checkActiveFormats]);
@@ -262,17 +319,11 @@ export default function Home() {
     }, 500); // Debounce time in ms
 };
 
-const handleFormat = (command: string, value?: string) => {
-    if (command === "formatBlock" && value) {
-        document.execCommand(command, false, value);
-    } else {
-        document.execCommand(command, false, value);
-    }
-    
+  const handleFormat = (command: string, value?: string) => {
+    document.execCommand(command, false, value);
     editorRef.current?.focus();
     checkActiveFormats();
-};
-
+  };
 
   const handleInsertChecklist = React.useCallback(() => {
     const selection = window.getSelection();
@@ -471,6 +522,14 @@ const handleFormat = (command: string, value?: string) => {
     }
   };
 
+  const handleEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).tagName === 'IMG') {
+        setSelectedImageSrc((event.target as HTMLImageElement).src);
+        setIsImageDialogOpen(true);
+    }
+    checkActiveFormats();
+  };
+
   const handleCloudSync = async () => {
     if (!isGapiLoaded) {
         toast({ title: "Google API not loaded yet.", variant: "destructive" });
@@ -595,6 +654,7 @@ const handleFormat = (command: string, value?: string) => {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
+          onClick={handleEditorClick}
           className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground editor-content"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
@@ -626,6 +686,13 @@ const handleFormat = (command: string, value?: string) => {
             onOpenChange={setIsSummaryDialogOpen}
             isLoading={isSummaryLoading}
             summary={summary}
+        />}
+
+        {isClient && <LazyImageDialog
+            isOpen={isImageDialogOpen}
+            onOpenChange={setIsImageDialogOpen}
+            src={selectedImageSrc}
+            toast={toast}
         />}
 
         <Toaster />

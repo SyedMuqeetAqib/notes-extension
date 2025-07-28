@@ -75,4 +75,7 @@
   .editor-content h3 {
     @apply text-2xl font-semibold;
   }
+  .editor-content .pasted-image {
+    @apply max-w-full md:max-w-[50%] h-auto rounded-lg my-4 shadow-md border cursor-pointer;
+  }
 }
