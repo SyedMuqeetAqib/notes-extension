@@ -126,6 +126,7 @@ export default function Home() {
   const [isDriveReady, setIsDriveReady] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
 
+  const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   React.useEffect(() => {
     // This effect runs once on mount to set the initial client state
@@ -167,7 +168,10 @@ export default function Home() {
     const activeNote = notes.find(n => n.id === activeNoteId);
     if (editorRef.current) {
         const newContent = activeNote?.content || "<p><br></p>";
-        editorRef.current.innerHTML = newContent;
+        // Only update if the content is different to avoid cursor issues
+        if (editorRef.current.innerHTML !== newContent) {
+            editorRef.current.innerHTML = newContent;
+        }
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = newContent;
         setCharacterCount(tempDiv.innerText.length);
@@ -234,25 +238,32 @@ export default function Home() {
   }, [checkActiveFormats]);
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
-    if (!activeNoteId) return;
-    const noteContent = e.currentTarget.innerHTML;
-    setCharacterCount(e.currentTarget.innerText.length);
-    try {
-        const updatedNotes = notes.map((n) =>
-            n.id === activeNoteId ? { ...n, content: noteContent, lastUpdatedAt: Date.now() } : n
-        );
-        setNotes(updatedNotes);
-        localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
-
-    } catch (error) {
-      console.error("Failed to save note to local storage", error);
-      toast({
-        variant: "destructive",
-        title: "Save Failed",
-        description: "Could not save your note to local storage.",
-      });
+    if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
     }
-  };
+
+    const noteContent = e.currentTarget.innerHTML;
+    const noteText = e.currentTarget.innerText;
+    setCharacterCount(noteText.length);
+
+    saveTimeoutRef.current = setTimeout(() => {
+        if (!activeNoteId) return;
+        try {
+            const updatedNotes = notes.map((n) =>
+                n.id === activeNoteId ? { ...n, content: noteContent, lastUpdatedAt: Date.now() } : n
+            );
+            setNotes(updatedNotes);
+            localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
+        } catch (error) {
+            console.error("Failed to save note to local storage", error);
+            toast({
+                variant: "destructive",
+                title: "Save Failed",
+                description: "Could not save your note to local storage.",
+            });
+        }
+    }, 500); // Debounce time in ms
+};
 
   const handleFormat = (command: string, value?: string) => {
     document.execCommand(command, false, value);
@@ -591,3 +602,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
