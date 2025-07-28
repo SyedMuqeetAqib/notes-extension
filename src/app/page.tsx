@@ -196,35 +196,45 @@ export default function Home() {
     if (typeof window === "undefined" || !document || !editorRef.current) return;
   
     const newActiveFormats: Record<string, boolean> = {};
+    const selection = window.getSelection();
+  
+    // Check inline formats first
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
   
-    const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
       setActiveFormats(newActiveFormats);
       return;
     }
   
     let node = selection.getRangeAt(0).startContainer;
-    let blockFormatFound = false;
-  
+    
+    // Traverse up to find block-level format
     while (node && node !== editorRef.current) {
       if (node.nodeType === Node.ELEMENT_NODE) {
         const nodeName = (node as HTMLElement).nodeName.toLowerCase();
-        
-        if (!blockFormatFound && (nodeName.match(/^h[1-3]$/) || nodeName === 'p')) {
+        if (nodeName.match(/^h[1-3]$/) || nodeName === 'p') {
+          // Set all block formats to false first
+          newActiveFormats.h1 = false;
+          newActiveFormats.h2 = false;
+          newActiveFormats.h3 = false;
+          newActiveFormats.p = false;
+          
+          // Set the active one to true
           newActiveFormats[nodeName] = true;
-          blockFormatFound = true; 
+          setActiveFormats(newActiveFormats);
+          return; // Found block format, exit
         }
       }
       node = node.parentNode;
     }
-
-    if (!blockFormatFound) {
-        newActiveFormats.p = true;
-    }
   
+    // If no block format was found in the hierarchy, default to paragraph
+    newActiveFormats.h1 = false;
+    newActiveFormats.h2 = false;
+    newActiveFormats.h3 = false;
+    newActiveFormats.p = true;
     setActiveFormats(newActiveFormats);
   }, []);
 
@@ -276,11 +286,7 @@ export default function Home() {
 };
 
   const handleFormat = (command: string, value?: string) => {
-    if (command === 'formatBlock' && value) {
-        document.execCommand('formatBlock', false, value);
-    } else {
-        document.execCommand(command, false, value);
-    }
+    document.execCommand(command, false, value);
     editorRef.current?.focus();
     checkActiveFormats();
 };
@@ -578,7 +584,7 @@ export default function Home() {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
-          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+          className="editor-content w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
           aria-label="Note editor"
