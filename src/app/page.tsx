@@ -128,6 +128,36 @@ export default function Home() {
 
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
+  const checkActiveFormats = React.useCallback(() => {
+    if (typeof window === "undefined" || !document) return;
+
+    const newActiveFormats: Record<string, boolean> = {};
+    
+    // Check for inline styles
+    newActiveFormats.bold = document.queryCommandState("bold");
+    newActiveFormats.italic = document.queryCommandState("italic");
+    newActiveFormats.underline = document.queryCommandState("underline");
+    
+    // Check for block styles
+    const selection = window.getSelection();
+    if (selection && selection.rangeCount > 0) {
+        let node = selection.focusNode;
+        while (node && node !== editorRef.current) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = node as HTMLElement;
+                const tagName = element.tagName.toLowerCase();
+                if (['p', 'h1', 'h2', 'h3'].includes(tagName)) {
+                    newActiveFormats[tagName] = true;
+                    break; 
+                }
+            }
+            node = node.parentNode;
+        }
+    }
+
+    setActiveFormats(newActiveFormats);
+  }, []);
+
   React.useEffect(() => {
     // This effect runs once on mount to set the initial client state
     setIsClient(true);
@@ -158,8 +188,18 @@ export default function Home() {
     };
     initDrive();
 
+    // Set up event listeners for format checking
+    document.addEventListener("selectionchange", checkActiveFormats);
+    document.addEventListener("keyup", checkActiveFormats);
+    document.addEventListener("click", checkActiveFormats);
 
-  }, [toast]);
+    return () => {
+        document.removeEventListener("selectionchange", checkActiveFormats);
+        document.removeEventListener("keyup", checkActiveFormats);
+        document.removeEventListener("click", checkActiveFormats);
+    };
+
+  }, [toast, checkActiveFormats]);
 
   // Load note content when activeNoteId changes
   React.useEffect(() => {
@@ -177,7 +217,9 @@ export default function Home() {
         setCharacterCount(tempDiv.innerText.length);
     }
     localStorage.setItem("tabula-last-active-note", activeNoteId);
-  }, [activeNoteId, isClient, notes]);
+    // After content changes, check the format at the new cursor position
+    setTimeout(checkActiveFormats, 0);
+  }, [activeNoteId, isClient, notes, checkActiveFormats]);
   
 
   const toggleTheme = () => {
@@ -191,67 +233,6 @@ export default function Home() {
       } Mode`,
     });
   };
-
-  const checkActiveFormats = React.useCallback(() => {
-    if (typeof window === "undefined" || !document) return;
-    
-    const newActiveFormats: Record<string, boolean> = {};
-    
-    newActiveFormats.bold = document.queryCommandState("bold");
-    newActiveFormats.italic = document.queryCommandState("italic");
-    newActiveFormats.underline = document.queryCommandState("underline");
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-        setActiveFormats(newActiveFormats);
-        return;
-    }
-
-    let node = selection.focusNode;
-    const blockTags = ['p', 'h1', 'h2', 'h3'];
-    let blockTagFound = false;
-    
-    while (node && node !== editorRef.current) {
-        if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = node as HTMLElement;
-            const tagName = element.tagName.toLowerCase();
-            if (blockTags.includes(tagName) && element.parentNode === editorRef.current) {
-                newActiveFormats[tagName] = true;
-                blockTagFound = true;
-                break;
-            }
-        }
-        node = node.parentNode;
-    }
-
-    if (!blockTagFound) {
-      newActiveFormats.p = true;
-    }
-
-    setActiveFormats(newActiveFormats);
-}, []);
-
-
-  // Set up event listeners for format checking
-  React.useEffect(() => {
-    const editor = editorRef.current;
-    if (editor) {
-      const handler = () => {
-        checkActiveFormats();
-      };
-      // 'selectionchange' is the most reliable event for cursor moves via mouse or keyboard
-      document.addEventListener("selectionchange", handler);
-      editor.addEventListener("keyup", handler);
-      editor.addEventListener("click", handler);
-
-
-      return () => {
-        document.removeEventListener("selectionchange", handler);
-        editor.removeEventListener("keyup", handler);
-        editor.removeEventListener("click", handler);
-      };
-    }
-  }, [checkActiveFormats]);
 
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     if (saveTimeoutRef.current) {
@@ -652,5 +633,3 @@ const handleFormat = (command: string, value?: string) => {
     </TooltipProvider>
   );
 }
-
-    
