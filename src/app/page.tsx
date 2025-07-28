@@ -198,7 +198,7 @@ export default function Home() {
     const newActiveFormats: Record<string, boolean> = {};
     const selection = window.getSelection();
   
-    // Check inline formats first
+    // Check inline formats
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
@@ -208,42 +208,31 @@ export default function Home() {
       return;
     }
   
-    let node = selection.getRangeAt(0).startContainer;
-    
-    // Traverse up to find block-level format
-    while (node && node !== editorRef.current) {
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = node as HTMLElement;
-        const nodeName = element.nodeName.toLowerCase();
-        
-        let parentIsEditor = false;
-        let parent: HTMLElement | null = element;
-        // Check if the element is a direct child of the editor
-        if (parent.parentElement === editorRef.current) {
-          parentIsEditor = true;
-        }
+    const blockTags = ['p', 'h1', 'h2', 'h3'];
+    let parentNode: Node | null = selection.getRangeAt(0).startContainer;
 
-        if (parentIsEditor && (nodeName.match(/^h[1-3]$/) || nodeName === 'p')) {
-            // Set all block formats to false first
-            newActiveFormats.h1 = false;
-            newActiveFormats.h2 = false;
-            newActiveFormats.h3 = false;
-            newActiveFormats.p = false;
-            
-            // Set the active one to true
-            newActiveFormats[nodeName] = true;
-            setActiveFormats(newActiveFormats);
-            return; // Found block format, exit
+    // Traverse up to find the block-level element (p, h1, etc.) that is a direct child of the editor
+    while (parentNode && parentNode !== editorRef.current) {
+        if (parentNode.nodeType === Node.ELEMENT_NODE) {
+            const element = parentNode as HTMLElement;
+            if (blockTags.includes(element.tagName.toLowerCase()) && element.parentNode === editorRef.current) {
+                // Reset all block formats
+                blockTags.forEach(tag => newActiveFormats[tag] = false);
+                // Set the found tag as active
+                newActiveFormats[element.tagName.toLowerCase()] = true;
+                setActiveFormats(newActiveFormats);
+                return; // Exit once found
+            }
         }
-      }
-      node = node.parentNode as Node;
+        parentNode = parentNode.parentNode;
     }
-  
-    // If no block format was found in the hierarchy, default to paragraph
-    newActiveFormats.h1 = false;
-    newActiveFormats.h2 = false;
-    newActiveFormats.h3 = false;
-    newActiveFormats.p = true;
+
+    // If no specific block tag is found, default to paragraph (this might happen in an empty editor)
+    if (!blockTags.some(tag => newActiveFormats[tag])) {
+        blockTags.forEach(tag => newActiveFormats[tag] = false);
+        newActiveFormats.p = true;
+    }
+    
     setActiveFormats(newActiveFormats);
   }, []);
 
@@ -295,9 +284,11 @@ export default function Home() {
 };
 
 const handleFormat = (command: string, value?: string) => {
-    if (command === "formatBlock") {
+    if (command === "formatBlock" && value) {
+        // For block formats, apply to the entire line/block
         document.execCommand(command, false, value);
     } else {
+        // For inline formats
         document.execCommand(command, false, value);
     }
     
