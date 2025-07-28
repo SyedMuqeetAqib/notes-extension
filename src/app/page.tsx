@@ -15,8 +15,9 @@ import {
 } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
-import { Pencil, Info } from "@/components/icons";
+import { Pencil, Info, Copy, Download as DownloadIcon } from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
+import { renderToStaticMarkup } from "react-dom/server";
 
 
 const LazySummaryDialog = dynamic(() => import('@/components/summary-dialog'));
@@ -100,6 +101,34 @@ const getInitialState = () => {
 
 const GOOGLE_CLIENT_ID = '284239172338-oiblqhmj5e48ippdo9bvet6e8ps2bm8r.apps.googleusercontent.com';
 
+const ImageWrapper = ({ src }: { src: string }) => (
+    <div className="pasted-image-wrapper" contentEditable={false}>
+      <div className="pasted-image-container group">
+        <img src={src} className="pasted-image" alt="Pasted content" />
+        <div className="pasted-image-overlay">
+          <div className="flex gap-2">
+            <Button
+              size="icon"
+              className="pasted-image-button"
+              data-action="copy-image"
+              data-src={src}
+            >
+              <Copy className="w-4 h-4" />
+            </Button>
+            <Button
+              size="icon"
+              className="pasted-image-button"
+              data-action="download-image"
+              data-src={src}
+            >
+              <DownloadIcon className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
 export default function Home() {
   const [isClient, setIsClient] = React.useState(false);
   
@@ -147,20 +176,15 @@ export default function Home() {
     const selection = window.getSelection();
     if (selection && selection.rangeCount > 0) {
       let node = selection.focusNode;
-      // Start from the current node and go up to the editor
       while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as HTMLElement;
           const tagName = element.tagName.toLowerCase();
-          if (['p', 'h1', 'h2', 'h3'].includes(tagName)) {
-            // Reset all block formats
-            newActiveFormats.p = false;
-            newActiveFormats.h1 = false;
-            newActiveFormats.h2 = false;
-            newActiveFormats.h3 = false;
-            // Set the active one
-            newActiveFormats[tagName] = true;
-            // Found the block format, no need to go further up
+          if (['p', 'h1', 'h2', 'h3'].includes(tagName) && element.parentElement === editorRef.current) {
+            newActiveFormats.p = tagName === 'p';
+            newActiveFormats.h1 = tagName === 'h1';
+            newActiveFormats.h2 = tagName === 'h2';
+            newActiveFormats.h3 = tagName === 'h3';
             break; 
           }
         }
@@ -218,23 +242,30 @@ export default function Home() {
 
           const reader = new FileReader();
           reader.onload = (event) => {
-            const img = document.createElement("img");
-            img.src = event.target?.result as string;
-            img.classList.add("pasted-image");
+            const src = event.target?.result as string;
+            if (!src) return;
+            
+            // Use React's server-side rendering to create the HTML string
+            const imageWrapperHtml = renderToStaticMarkup(<ImageWrapper src={src} />);
             
             const selection = window.getSelection();
             if (selection && selection.rangeCount > 0) {
               const range = selection.getRangeAt(0);
-              range.deleteContents();
-              range.insertNode(img);
-              // Move cursor after the image
-              const newRange = document.createRange();
-              newRange.setStartAfter(img);
-              newRange.collapse(true);
-              selection.removeAllRanges();
-              selection.addRange(newRange);
+              const tempDiv = document.createElement("div");
+              tempDiv.innerHTML = imageWrapperHtml;
+              const imageNode = tempDiv.firstChild;
+              if (imageNode) {
+                  range.deleteContents();
+                  range.insertNode(imageNode);
+                  // Move cursor after the image
+                  const newRange = document.createRange();
+                  newRange.setStartAfter(imageNode);
+                  newRange.collapse(true);
+                  selection.removeAllRanges();
+                  selection.addRange(newRange);
+              }
             } else {
-              editorRef.current?.appendChild(img);
+              editorRef.current!.innerHTML += imageWrapperHtml;
             }
             
             // Trigger save after paste
@@ -320,7 +351,21 @@ export default function Home() {
 };
 
   const handleFormat = (command: string, value?: string) => {
-    document.execCommand(command, false, value);
+    if (command === "formatBlock" && value?.startsWith('<h')) {
+        const selection = window.getSelection();
+        if (selection && selection.rangeCount > 0) {
+            const range = selection.getRangeAt(0);
+            const selectedText = range.toString();
+            const headingTag = value.substring(1,3);
+            const fontSize = headingTag === 'h1' ? '2em' : headingTag === 'h2' ? '1.5em' : '1.17em';
+            const fontWeight = headingTag === 'h1' ? 'bold' : 'semibold';
+
+            const html = `<${headingTag}><span style="font-size: ${fontSize}; font-weight: ${fontWeight};">${selectedText || '&nbsp;'}</span></${headingTag}>`;
+            document.execCommand('insertHTML', false, html);
+        }
+    } else {
+        document.execCommand(command, false, value);
+    }
     editorRef.current?.focus();
     checkActiveFormats();
   };
@@ -497,34 +542,68 @@ export default function Home() {
       }
 
       if (parentHeading) {
-        event.preventDefault(); // Stop the default 'Enter' behavior (creating a new heading)
+        event.preventDefault(); // Stop the default 'Enter' behavior
 
-        // Create a new paragraph element to insert after the heading
         const newParagraph = document.createElement('p');
-        newParagraph.innerHTML = '<br>'; // Use <br> to ensure the line is created and visible
+        newParagraph.innerHTML = '<br>'; // Ensure visibility
 
-        // Insert the new paragraph after the current heading
         parentHeading.insertAdjacentElement('afterend', newParagraph);
         
-        // Move the cursor to the new paragraph
         const newRange = document.createRange();
         newRange.setStart(newParagraph, 0);
         newRange.collapse(true);
         selection.removeAllRanges();
         selection.addRange(newRange);
 
-        // Manually trigger a save since we prevented default input
         handleInput(event as any);
 
-        // Update the toolbar to reflect the new paragraph state
         checkActiveFormats();
       }
     }
   };
 
+  const handleCopyImage = async (src: string) => {
+    try {
+        const response = await fetch(src);
+        const blob = await response.blob();
+        await navigator.clipboard.write([ new ClipboardItem({ [blob.type]: blob }) ]);
+        toast({ title: "Image copied to clipboard" });
+    } catch (error) {
+        console.error("Failed to copy image:", error);
+        toast({ variant: "destructive", title: "Copy failed", description: "Could not copy image to clipboard." });
+    }
+  };
+
+  const handleDownloadImage = (src: string) => {
+    const link = document.createElement("a");
+    link.href = src;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileType = src.split(';')[0].split('/')[1] || 'png';
+    link.download = `image-${timestamp}.${fileType}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({ title: "Image downloaded" });
+  };
+
+
   const handleEditorClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).tagName === 'IMG') {
-        setSelectedImageSrc((event.target as HTMLImageElement).src);
+    const target = event.target as HTMLElement;
+    const action = target.closest('[data-action]')?.getAttribute('data-action');
+    const src = target.closest('[data-src]')?.getAttribute('data-src');
+
+    if (action && src) {
+        event.preventDefault();
+        if (action === 'copy-image') {
+            handleCopyImage(src);
+        } else if (action === 'download-image') {
+            handleDownloadImage(src);
+        }
+        return;
+    }
+    
+    if (target.tagName === 'IMG' && target.classList.contains('pasted-image')) {
+        setSelectedImageSrc(target.getAttribute('src'));
         setIsImageDialogOpen(true);
     }
     checkActiveFormats();

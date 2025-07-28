@@ -66,6 +66,9 @@
   .checklist-item > div {
     @apply flex-grow;
   }
+  .editor-content h1, .editor-content h2, .editor-content h3 {
+    @apply my-4;
+  }
   .editor-content h1 {
     @apply text-4xl font-bold;
   }
@@ -75,7 +78,19 @@
   .editor-content h3 {
     @apply text-2xl font-semibold;
   }
-  .editor-content .pasted-image {
-    @apply max-w-full md:max-w-[45%] h-auto rounded-lg my-4 shadow-md border cursor-pointer;
+  .pasted-image-wrapper {
+    @apply relative inline-block my-4;
+  }
+  .pasted-image-container {
+    @apply relative;
+  }
+  .pasted-image {
+    @apply max-w-full md:max-w-[35%] h-auto rounded-lg shadow-md border block;
+  }
+  .pasted-image-overlay {
+    @apply absolute inset-0 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center rounded-lg;
+  }
+  .pasted-image-button {
+    @apply bg-white/80 hover:bg-white text-black;
   }
 }
