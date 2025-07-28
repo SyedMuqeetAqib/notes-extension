@@ -4,6 +4,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { summarizeNote } from "@/ai/flows/summarize-note";
+import type { SummarizeNoteOutput } from "@/ai/flows/summarize-note.dtos";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -328,7 +329,7 @@ export default function Home() {
     setSummary("");
     setIsSummaryDialogOpen(true);
     try {
-      const result = await summarizeNote({ note: plainText });
+      const result: SummarizeNoteOutput = await summarizeNote({ note: plainText });
       setSummary(result.summary);
     } catch (error) {
       console.error("Failed to summarize note", error);

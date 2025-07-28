@@ -3,25 +3,17 @@
  * @fileOverview A note summarization AI agent.
  *
  * - summarizeNote - A function that handles the note summarization process.
- * - SummarizeNoteInput - The input type for the summarizeNote function.
- * - SummarizeNoteOutput - The return type for the summarizeNote function.
  */
 
 'use server';
 
 import {ai} from '@/ai/genkit';
-import {z} from 'zod';
-
-export const SummarizeNoteInputSchema = z.object({
-  note: z.string().describe('The note to summarize'),
-});
-export type SummarizeNoteInput = z.infer<typeof SummarizeNoteInputSchema>;
-
-export const SummarizeNoteOutputSchema = z.object({
-  summary: z.string().describe('The summary of the note'),
-});
-export type SummarizeNoteOutput = z.infer<typeof SummarizeNoteOutputSchema>;
-
+import {
+  SummarizeNoteInput,
+  SummarizeNoteInputSchema,
+  SummarizeNoteOutput,
+  SummarizeNoteOutputSchema,
+} from './summarize-note.dtos';
 
 const summaryPrompt = ai.definePrompt({
     name: 'summaryPrompt',
@@ -33,7 +25,7 @@ const summaryPrompt = ai.definePrompt({
     `
 });
 
-export const summarizeNoteFlow = ai.defineFlow(
+const summarizeNoteFlow = ai.defineFlow(
   {
     name: 'summarizeNoteFlow',
     inputSchema: SummarizeNoteInputSchema,
