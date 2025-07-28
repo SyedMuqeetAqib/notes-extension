@@ -97,7 +97,7 @@ const getInitialState = () => {
   }
 };
 
-const GOOGLE_CLIENT_ID = '284239172338-8h05pivsirhrc2joc1d21vqgurvpeg63.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = '284239172338-oiblqhmj5e48ippdo9bvet6e8ps2bm8r.apps.googleusercontent.com';
 
 export default function Home() {
   const [isClient, setIsClient] = React.useState(false);
