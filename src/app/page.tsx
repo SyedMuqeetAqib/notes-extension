@@ -179,20 +179,25 @@ export default function Home() {
 
     // Initialize Google Drive API
     const initDrive = async () => {
-      try {
-        await GoogleDrive.loadGapi();
-        setIsGapiLoaded(true);
-        await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
-          // This callback handles the token response after user signs in.
-          GoogleDrive.setToken(tokenResponse);
-          setIsLoggedIn(true);
-          setIsDriveReady(true);
-          toast({ title: "Signed in to Google Drive" });
-        });
-      } catch (error) {
-        console.error("Failed to initialize Google Drive", error);
-        toast({ title: "Could not connect to Google Drive", variant: "destructive"});
-      }
+        try {
+            await GoogleDrive.loadGapi();
+            setIsGapiLoaded(true);
+
+            const token = gapi.client.getToken();
+            const isLoggedIn = token !== null;
+            setIsLoggedIn(isLoggedIn);
+            setIsDriveReady(isLoggedIn);
+
+            await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
+                GoogleDrive.setToken(tokenResponse);
+                setIsLoggedIn(true);
+                setIsDriveReady(true);
+                toast({ title: "Signed in to Google Drive" });
+            });
+        } catch (error) {
+            console.error("Failed to initialize Google Drive", error);
+            toast({ title: "Could not connect to Google Drive", variant: "destructive"});
+        }
     };
     initDrive();
 
@@ -782,5 +787,3 @@ export default function Home() {
     </TooltipProvider>
   );
 }
-
-    

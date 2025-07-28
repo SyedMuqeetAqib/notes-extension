@@ -66,6 +66,7 @@ function ensureGoogleScriptsLoaded(): Promise<void> {
  * Callback after the GIS client is loaded.
  */
 export async function initGis(clientId: string, callback: (tokenResponse: google.accounts.oauth2.TokenResponse) => void) {
+    await ensureGoogleScriptsLoaded();
     if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
         // This should not happen if loadGapi is awaited correctly
         throw new Error("Google Identity Services not loaded");
@@ -74,7 +75,12 @@ export async function initGis(clientId: string, callback: (tokenResponse: google
     tokenClient = window.google.accounts.oauth2.initTokenClient({
         client_id: clientId,
         scope: SCOPES,
-        callback: callback,
+        callback: (tokenResponse: google.accounts.oauth2.TokenResponse) => {
+            // Store token for session persistence
+            if (tokenResponse.access_token) {
+                callback(tokenResponse);
+            }
+        },
     });
 }
 
@@ -86,7 +92,7 @@ export function requestToken() {
         throw new Error("Token client not initialized");
     }
     // Settle this promise in the response callback for requestAccessToken()
-    tokenClient.requestAccessToken();
+    tokenClient.requestAccessToken({ prompt: 'consent' });
 }
 
 
