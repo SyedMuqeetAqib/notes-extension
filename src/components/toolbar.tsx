@@ -31,12 +31,13 @@ import { AlertDialogTrigger } from "@radix-ui/react-alert-dialog";
 import {
     Bold, Italic, Underline, Download, Sparkles, FilePlus2, ListTodo,
     Heading1, Heading2, Heading3, Minus, Palette, Pilcrow, MoreVertical,
-    Moon, Sun, Trash2, Folder, Cloud
+    Moon, Sun, Trash2, Folder, Cloud, LogOut
 } from "@/components/icons";
 
 type Note = {
     id: string;
     name: string;
+    content: string;
     createdAt: number;
     lastUpdatedAt: number;
   };
@@ -46,6 +47,7 @@ type Note = {
     activeNoteId: string | null;
     activeFormats: Record<string, boolean>;
     theme: string;
+    isLoggedIn: boolean;
     setActiveNoteId: (id: string) => void;
     handleCreateNewNote: () => void;
     handleDeleteNote: (id: string) => void;
@@ -55,6 +57,7 @@ type Note = {
     handleExport: () => void;
     toggleTheme: () => void;
     handleCloudSync: () => void;
+    handleSignOut: () => void;
   };
 
 export function Toolbar({
@@ -62,6 +65,7 @@ export function Toolbar({
     activeNoteId,
     activeFormats,
     theme,
+    isLoggedIn,
     setActiveNoteId,
     handleCreateNewNote,
     handleDeleteNote,
@@ -71,6 +75,7 @@ export function Toolbar({
     handleExport,
     toggleTheme,
     handleCloudSync,
+    handleSignOut,
 }: ToolbarProps) {
     return (
         <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -248,8 +253,14 @@ export function Toolbar({
             <DropdownMenuContent align="end">
                 <DropdownMenuItem onClick={handleCloudSync}>
                     <Cloud className="w-4 h-4 mr-2" />
-                    <span>Sync to Cloud</span>
+                    <span>{isLoggedIn ? 'Sync to Cloud' : 'Sign in & Sync'}</span>
                 </DropdownMenuItem>
+                {isLoggedIn && (
+                    <DropdownMenuItem onClick={handleSignOut}>
+                        <LogOut className="w-4 h-4 mr-2" />
+                        <span>Sign Out</span>
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuItem onClick={handleExport}>
                 <Download className="w-4 h-4 mr-2" />
                 <span>Export as .txt</span>
