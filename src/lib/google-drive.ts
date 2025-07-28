@@ -20,12 +20,53 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const APP_FOLDER = 'TabulaNote App';
 const NOTES_FILE_NAME = 'tabula-notes.json';
 
+let gapiLoaded = false;
+let gisLoaded = false;
+
+function loadScript(src: string, onload: () => void) {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.defer = true;
+    script.onload = onload;
+    document.body.appendChild(script);
+}
+
+function ensureGoogleScriptsLoaded(): Promise<void> {
+    return new Promise((resolve) => {
+        if (gapiLoaded && gisLoaded) {
+            resolve();
+            return;
+        }
+
+        const checkScripts = () => {
+            if (gapiLoaded && gisLoaded) {
+                resolve();
+            }
+        };
+
+        if (!gapiLoaded) {
+            loadScript('https://apis.google.com/js/api.js', () => {
+                gapiLoaded = true;
+                gapi.load('client', checkScripts);
+            });
+        }
+
+        if (!gisLoaded) {
+            loadScript('https://accounts.google.com/gsi/client', () => {
+                gisLoaded = true;
+                checkScripts();
+            });
+        }
+    });
+}
+
 
 /**
  * Callback after the GIS client is loaded.
  */
 export async function initGis(clientId: string, callback: (tokenResponse: google.accounts.oauth2.TokenResponse) => void) {
-    if (!window.google || !window.google.accounts) {
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
         // This should not happen if loadGapi is awaited correctly
         throw new Error("Google Identity Services not loaded");
     }
@@ -71,9 +112,10 @@ export function setToken(token: google.accounts.oauth2.TokenResponse) {
 /**
  * Load the GAPI client.
  */
-export function loadGapi(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        gapi.load('client:auth2', () => {
+export async function loadGapi(): Promise<void> {
+    await ensureGoogleScriptsLoaded();
+    await new Promise<void>((resolve, reject) => {
+        gapi.load('client', () => {
             gapi.client.init({
                 apiKey: GOOGLE_API_KEY,
                 discoveryDocs: [DISCOVERY_DOC],
@@ -174,7 +216,7 @@ export async function saveNotesToDrive(notes: Note[]): Promise<void> {
             body: form
         });
 
-        if (response.status !== 200) {
+        if (response.status < 200 || response.status >= 300) {
             throw new Error(`Failed to save file: ${response.body}`);
         }
     } catch (err) {
