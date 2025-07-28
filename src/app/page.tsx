@@ -216,15 +216,11 @@ export default function Home() {
         const element = node as HTMLElement;
         const nodeName = element.nodeName.toLowerCase();
         
-        // Check for direct children of the editor or their children
         let parentIsEditor = false;
-        let parent = element.parentElement;
-        while(parent){
-          if(parent === editorRef.current){
-            parentIsEditor = true;
-            break;
-          }
-          parent = parent.parentElement;
+        let parent: HTMLElement | null = element;
+        // Check if the element is a direct child of the editor
+        if (parent.parentElement === editorRef.current) {
+          parentIsEditor = true;
         }
 
         if (parentIsEditor && (nodeName.match(/^h[1-3]$/) || nodeName === 'p')) {
@@ -631,7 +627,7 @@ const handleFormat = (command: string, value?: string) => {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
-          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground editor-content"
+          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
           aria-label="Note editor"
@@ -669,5 +665,3 @@ const handleFormat = (command: string, value?: string) => {
     </TooltipProvider>
   );
 }
-
-    
