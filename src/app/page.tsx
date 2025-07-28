@@ -227,7 +227,7 @@ export default function Home() {
           return; // Found block format, exit
         }
       }
-      node = node.parentNode;
+      node = node.parentNode as Node;
     }
   
     // If no block format was found in the hierarchy, default to paragraph
@@ -447,22 +447,47 @@ const handleFormat = (command: string, value?: string) => {
   };
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
+    if (event.key === 'Enter') {
+      const selection = window.getSelection();
+      if (!selection || selection.rangeCount === 0) return;
 
-    const range = selection.getRangeAt(0);
-    const container = range.commonAncestorContainer;
-    let parentElement =
-      container.nodeType === Node.ELEMENT_NODE
-        ? (container as Element)
-        : container.parentElement;
+      const range = selection.getRangeAt(0);
+      let node = range.startContainer;
+      let parentHeading: HTMLElement | null = null;
 
-    while (parentElement && parentElement !== editorRef.current) {
-      if (parentElement.classList.contains("checklist-item")) {
-        // ... (checklist logic remains the same)
-        return;
+      // Traverse up to find if we're inside a heading that is a direct child of the editor
+      while (node && node !== editorRef.current) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          const element = node as HTMLElement;
+          const nodeName = element.nodeName.toLowerCase();
+          if (['h1', 'h2', 'h3'].includes(nodeName) && element.parentElement === editorRef.current) {
+            parentHeading = element;
+            break;
+          }
+        }
+        node = node.parentNode!;
       }
-      parentElement = parentElement.parentElement;
+
+      if (parentHeading) {
+        event.preventDefault(); // Stop the default 'Enter' behavior (creating a new heading)
+
+        // Create a new paragraph element to insert after the heading
+        const newParagraph = document.createElement('p');
+        newParagraph.innerHTML = '<br>'; // Use <br> to ensure the line is created and visible
+
+        // Insert the new paragraph after the current heading
+        parentHeading.insertAdjacentElement('afterend', newParagraph);
+        
+        // Move the cursor to the new paragraph
+        const newRange = document.createRange();
+        newRange.setStart(newParagraph, 0);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+
+        // Manually trigger a save since we prevented default input
+        handleInput(event as any);
+      }
     }
   };
 
