@@ -213,18 +213,31 @@ export default function Home() {
     // Traverse up to find block-level format
     while (node && node !== editorRef.current) {
       if (node.nodeType === Node.ELEMENT_NODE) {
-        const nodeName = (node as HTMLElement).nodeName.toLowerCase();
-        if (nodeName.match(/^h[1-3]$/) || nodeName === 'p') {
-          // Set all block formats to false first
-          newActiveFormats.h1 = false;
-          newActiveFormats.h2 = false;
-          newActiveFormats.h3 = false;
-          newActiveFormats.p = false;
-          
-          // Set the active one to true
-          newActiveFormats[nodeName] = true;
-          setActiveFormats(newActiveFormats);
-          return; // Found block format, exit
+        const element = node as HTMLElement;
+        const nodeName = element.nodeName.toLowerCase();
+        
+        // Check for direct children of the editor or their children
+        let parentIsEditor = false;
+        let parent = element.parentElement;
+        while(parent){
+          if(parent === editorRef.current){
+            parentIsEditor = true;
+            break;
+          }
+          parent = parent.parentElement;
+        }
+
+        if (parentIsEditor && (nodeName.match(/^h[1-3]$/) || nodeName === 'p')) {
+            // Set all block formats to false first
+            newActiveFormats.h1 = false;
+            newActiveFormats.h2 = false;
+            newActiveFormats.h3 = false;
+            newActiveFormats.p = false;
+            
+            // Set the active one to true
+            newActiveFormats[nodeName] = true;
+            setActiveFormats(newActiveFormats);
+            return; // Found block format, exit
         }
       }
       node = node.parentNode as Node;
@@ -487,6 +500,9 @@ const handleFormat = (command: string, value?: string) => {
 
         // Manually trigger a save since we prevented default input
         handleInput(event as any);
+
+        // Update the toolbar to reflect the new paragraph state
+        checkActiveFormats();
       }
     }
   };
@@ -653,3 +669,5 @@ const handleFormat = (command: string, value?: string) => {
     </TooltipProvider>
   );
 }
+
+    
