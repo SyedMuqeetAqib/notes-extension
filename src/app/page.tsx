@@ -197,12 +197,10 @@ export default function Home() {
     
     const newActiveFormats: Record<string, boolean> = {};
     
-    // Check for inline styles first
     newActiveFormats.bold = document.queryCommandState("bold");
     newActiveFormats.italic = document.queryCommandState("italic");
     newActiveFormats.underline = document.queryCommandState("underline");
 
-    // Check for block styles
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) {
         setActiveFormats(newActiveFormats);
@@ -212,26 +210,22 @@ export default function Home() {
     let node = selection.focusNode;
     const blockTags = ['p', 'h1', 'h2', 'h3'];
     let blockTagFound = false;
-
-    // Traverse up from the cursor's position to find the parent block element
+    
     while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE) {
             const element = node as HTMLElement;
             const tagName = element.tagName.toLowerCase();
             if (blockTags.includes(tagName) && element.parentNode === editorRef.current) {
-                blockTags.forEach(tag => newActiveFormats[tag] = false); // Reset all
-                newActiveFormats[tagName] = true; // Set the found one
+                newActiveFormats[tagName] = true;
                 blockTagFound = true;
-                break; // Exit the loop once found
+                break;
             }
         }
         node = node.parentNode;
     }
 
-    // If no specific block tag is found (e.g., in an empty or new editor), default to 'p'
     if (!blockTagFound) {
-        blockTags.forEach(tag => newActiveFormats[tag] = false);
-        newActiveFormats.p = true;
+      newActiveFormats.p = true;
     }
 
     setActiveFormats(newActiveFormats);
@@ -289,10 +283,8 @@ export default function Home() {
 
 const handleFormat = (command: string, value?: string) => {
     if (command === "formatBlock" && value) {
-        // For block formats, apply to the entire line/block
         document.execCommand(command, false, value);
     } else {
-        // For inline formats
         document.execCommand(command, false, value);
     }
     
@@ -622,7 +614,7 @@ const handleFormat = (command: string, value?: string) => {
           contentEditable={!isRenaming}
           onInput={handleInput}
           onKeyDown={handleEditorKeyDown}
-          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground"
+          className="w-full h-full min-h-screen p-16 outline-none text-lg leading-relaxed selection:bg-primary selection:text-primary-foreground editor-content"
           suppressContentEditableWarning={true}
           style={{ caretColor: "hsl(var(--ring))" }}
           aria-label="Note editor"
@@ -660,3 +652,5 @@ const handleFormat = (command: string, value?: string) => {
     </TooltipProvider>
   );
 }
+
+    
