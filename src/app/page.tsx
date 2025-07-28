@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -193,6 +194,7 @@ export default function Home() {
   const [theme, setTheme] = React.useState(
     initialStateRef.current?.theme || "light"
   );
+  const [characterCount, setCharacterCount] = React.useState(0);
 
   const [summary, setSummary] = React.useState("");
   const [isSummaryLoading, setIsSummaryLoading] = React.useState(false);
@@ -222,6 +224,7 @@ export default function Home() {
         setTheme(state.theme);
         if (editorRef.current) {
           editorRef.current.innerHTML = state.initialContent;
+          setCharacterCount(editorRef.current.innerText.length);
         }
         document.documentElement.classList.toggle(
           "dark",
@@ -241,6 +244,7 @@ export default function Home() {
       const savedNote = localStorage.getItem(`tabula-note-${activeNoteId}`);
       if (editorRef.current) {
         editorRef.current.innerHTML = savedNote || "<p><br></p>";
+        setCharacterCount(editorRef.current.innerText.length);
       }
       localStorage.setItem("tabula-last-active-note", activeNoteId);
     } catch (error) {
@@ -308,6 +312,7 @@ export default function Home() {
   const handleInput = (e: React.FormEvent<HTMLDivElement>) => {
     if (!activeNoteId) return;
     const noteContent = e.currentTarget.innerHTML;
+    setCharacterCount(e.currentTarget.innerText.length);
     try {
       localStorage.setItem(`tabula-note-${activeNoteId}`, noteContent);
 
@@ -720,6 +725,7 @@ export default function Home() {
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="end">
                   <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                    <span>Characters: {characterCount}</span>
                     <span>Created: {formatDate(activeNote.createdAt)}</span>
                     <span>Updated: {formatDate(activeNote.lastUpdatedAt)}</span>
                   </div>
@@ -798,3 +804,5 @@ export default function Home() {
     </TooltipProvider>
   );
 }
+
+    
