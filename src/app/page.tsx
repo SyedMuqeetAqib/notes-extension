@@ -134,6 +134,7 @@ export default function Home() {
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
 
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const prevActiveNoteIdRef = React.useRef<string | null>(null);
 
   const checkActiveFormats = React.useCallback(() => {
     if (typeof window === "undefined" || !document.getSelection) return;
@@ -258,7 +259,7 @@ export default function Home() {
         "<p><br></p>";
       editorRef.current.innerHTML = activeNoteContent;
 
-      // Focus the editor and place cursor at the start
+      // Focus the editor and place cursor at the start only on initial load
       editorRef.current.focus();
 
       // Create a range at the beginning of the editor
@@ -276,6 +277,9 @@ export default function Home() {
       range.collapse(true);
       selection?.removeAllRanges();
       selection?.addRange(range);
+
+      // Set the initial active note ID to prevent cursor repositioning on first render
+      prevActiveNoteIdRef.current = state.activeNoteId;
     }
     document.documentElement.classList.toggle("dark", state.theme === "dark");
 
@@ -418,6 +422,8 @@ export default function Home() {
     const activeNote = notes.find((n) => n.id === activeNoteId);
     if (editorRef.current) {
       const newContent = activeNote?.content || "<p><br></p>";
+      const isNoteSwitch = prevActiveNoteIdRef.current !== activeNoteId;
+
       // Only update if the content is different to avoid cursor issues
       if (editorRef.current.innerHTML !== newContent) {
         editorRef.current.innerHTML = newContent;
@@ -426,26 +432,33 @@ export default function Home() {
       tempDiv.innerHTML = newContent;
       setCharacterCount(tempDiv.innerText.length);
 
-      // Focus the editor and place cursor at the start when switching notes
-      editorRef.current.focus();
+      // Only reposition cursor when actually switching notes, not on every re-render
+      if (isNoteSwitch) {
+        // Focus the editor and place cursor at the start when switching notes
+        editorRef.current.focus();
 
-      // Create a range at the beginning of the editor
-      const range = document.createRange();
-      const selection = window.getSelection();
+        // Create a range at the beginning of the editor
+        const range = document.createRange();
+        const selection = window.getSelection();
 
-      if (editorRef.current.firstChild) {
-        // If there's content, place cursor at the start of the first child
-        range.setStart(editorRef.current.firstChild, 0);
-      } else {
-        // If empty, place cursor at the start of the editor
-        range.setStart(editorRef.current, 0);
+        if (editorRef.current.firstChild) {
+          // If there's content, place cursor at the start of the first child
+          range.setStart(editorRef.current.firstChild, 0);
+        } else {
+          // If empty, place cursor at the start of the editor
+          range.setStart(editorRef.current, 0);
+        }
+
+        range.collapse(true);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
       }
-
-      range.collapse(true);
-      selection?.removeAllRanges();
-      selection?.addRange(range);
     }
+
+    // Update the previous active note ID
+    prevActiveNoteIdRef.current = activeNoteId;
     localStorage.setItem("tabula-last-active-note", activeNoteId);
+
     // After content changes, check the format at the new cursor position
     setTimeout(checkActiveFormats, 0);
   }, [activeNoteId, isClient, notes, checkActiveFormats]);
