@@ -257,6 +257,25 @@ export default function Home() {
         state.notes.find((n) => n.id === state.activeNoteId)?.content ||
         "<p><br></p>";
       editorRef.current.innerHTML = activeNoteContent;
+
+      // Focus the editor and place cursor at the start
+      editorRef.current.focus();
+
+      // Create a range at the beginning of the editor
+      const range = document.createRange();
+      const selection = window.getSelection();
+
+      if (editorRef.current.firstChild) {
+        // If there's content, place cursor at the start of the first child
+        range.setStart(editorRef.current.firstChild, 0);
+      } else {
+        // If empty, place cursor at the start of the editor
+        range.setStart(editorRef.current, 0);
+      }
+
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
     document.documentElement.classList.toggle("dark", state.theme === "dark");
 
@@ -406,6 +425,25 @@ export default function Home() {
       const tempDiv = document.createElement("div");
       tempDiv.innerHTML = newContent;
       setCharacterCount(tempDiv.innerText.length);
+
+      // Focus the editor and place cursor at the start when switching notes
+      editorRef.current.focus();
+
+      // Create a range at the beginning of the editor
+      const range = document.createRange();
+      const selection = window.getSelection();
+
+      if (editorRef.current.firstChild) {
+        // If there's content, place cursor at the start of the first child
+        range.setStart(editorRef.current.firstChild, 0);
+      } else {
+        // If empty, place cursor at the start of the editor
+        range.setStart(editorRef.current, 0);
+      }
+
+      range.collapse(true);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
     }
     localStorage.setItem("tabula-last-active-note", activeNoteId);
     // After content changes, check the format at the new cursor position
