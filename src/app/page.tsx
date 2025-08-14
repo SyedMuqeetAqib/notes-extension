@@ -312,7 +312,9 @@ export default function Home() {
 
             const imageWrapper = document.createElement("div");
             imageWrapper.className = "pasted-image-wrapper";
-            imageWrapper.contentEditable = "false";
+            imageWrapper.contentEditable = "true";
+            imageWrapper.style.minHeight = "1px";
+            imageWrapper.style.cursor = "text";
 
             const imageContainer = document.createElement("div");
             imageContainer.className = "pasted-image-container group";
@@ -347,6 +349,10 @@ export default function Home() {
             imageContainer.appendChild(img);
             imageContainer.appendChild(overlay);
             imageWrapper.appendChild(imageContainer);
+
+            // Add a text node after the image container for cursor placement
+            const textNode = document.createTextNode("\u200B"); // Zero-width space
+            imageWrapper.appendChild(textNode);
 
             const selection = window.getSelection();
             if (selection && selection.rangeCount > 0) {
@@ -653,8 +659,9 @@ export default function Home() {
       let node = range.startContainer;
       let parentHeading: HTMLElement | null = null;
       let parentChecklistItem: HTMLElement | null = null;
+      let parentImageWrapper: HTMLElement | null = null;
 
-      // Traverse up to find if we're inside a heading or checklist item
+      // Traverse up to find if we're inside a heading, checklist item, or image wrapper
       while (node && node !== editorRef.current) {
         if (node.nodeType === Node.ELEMENT_NODE) {
           const element = node as HTMLElement;
@@ -677,8 +684,36 @@ export default function Home() {
             parentChecklistItem = element;
             break;
           }
+
+          // Check for image wrapper
+          if (
+            element.classList.contains("pasted-image-wrapper") &&
+            element.parentElement === editorRef.current
+          ) {
+            parentImageWrapper = element;
+            break;
+          }
         }
         node = node.parentNode!;
+      }
+
+      if (parentImageWrapper) {
+        event.preventDefault(); // Stop the default 'Enter' behavior
+
+        const newParagraph = document.createElement("p");
+        newParagraph.innerHTML = "<br>"; // Ensure visibility
+
+        parentImageWrapper.insertAdjacentElement("afterend", newParagraph);
+
+        const newRange = document.createRange();
+        newRange.setStart(newParagraph, 0);
+        newRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(newRange);
+
+        handleInput(event as any);
+        checkActiveFormats();
+        return;
       }
 
       if (parentHeading) {
@@ -788,10 +823,27 @@ export default function Home() {
       }
     }
 
+    // Handle image click for dialog
     if (target.tagName === "IMG" && target.classList.contains("pasted-image")) {
       setSelectedImageSrc(target.getAttribute("src"));
       setIsImageDialogOpen(true);
+      return;
     }
+
+    // Handle image wrapper click for cursor placement
+    if (target.classList.contains("pasted-image-wrapper")) {
+      // Allow cursor placement by not preventing default
+      // The wrapper is now contentEditable="true"
+      return;
+    }
+
+    // Handle image container click (the div containing the image)
+    if (target.classList.contains("pasted-image-container")) {
+      // Prevent default to avoid interfering with image functionality
+      event.preventDefault();
+      return;
+    }
+
     checkActiveFormats();
   };
 

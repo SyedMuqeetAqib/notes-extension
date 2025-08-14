@@ -80,9 +80,22 @@
   }
   .pasted-image-wrapper {
     @apply block my-4;
+    position: relative;
+    cursor: text;
+  }
+  .pasted-image-wrapper:empty::after {
+    content: '\200B'; /* Zero-width space to allow cursor placement */
+  }
+  .pasted-image-wrapper:focus {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
   }
   .pasted-image-container {
     @apply relative inline-block;
+    pointer-events: none;
+  }
+  .pasted-image-container .pasted-image-overlay {
+    pointer-events: auto;
   }
   .pasted-image {
     max-width: 100%;
