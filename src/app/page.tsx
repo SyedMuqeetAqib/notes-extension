@@ -627,6 +627,24 @@ export default function Home() {
   };
 
   const handleEditorKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    // Handle Ctrl+A / Cmd+A for select all
+    if ((event.ctrlKey || event.metaKey) && event.key === "a") {
+      event.preventDefault();
+
+      if (editorRef.current) {
+        const selection = window.getSelection();
+        const range = document.createRange();
+
+        // Select all content within the editor
+        range.selectNodeContents(editorRef.current);
+
+        // Clear any existing selection and add our new range
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      return;
+    }
+
     if (event.key === "Enter") {
       const selection = window.getSelection();
       if (!selection || selection.rangeCount === 0) return;
