@@ -4,7 +4,8 @@
   "version": "1.0.0",
   "description": "A beautiful new tab page for your thoughts and notes.",
   "permissions": [
-    "storage"
+    "storage",
+    "identity"
   ],
   "chrome_url_overrides": {
     "newtab": "index.html"

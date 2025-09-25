@@ -49,6 +49,13 @@ import {
   List,
   ListOrdered,
   ListTodo,
+  CheckCircle,
+  AlertCircle,
+  Loader2,
+  RefreshCw,
+  Database,
+  Search,
+  FileText,
 } from "@/components/icons";
 
 type Note = {
@@ -64,6 +71,11 @@ type ToolbarProps = {
   activeNoteId: string | null;
   theme: string;
   isLoggedIn: boolean;
+  isSyncing: boolean;
+  lastSyncTime: number | null;
+  syncError: string | null;
+  isOnline: boolean;
+  pendingSyncs: number;
   editorRef: React.RefObject<any>;
   setActiveNoteId: (id: string) => void;
   handleCreateNewNote: () => void;
@@ -72,6 +84,14 @@ type ToolbarProps = {
   toggleTheme: () => void;
   handleCloudSync: () => void;
   handleSignOut: () => void;
+  handleTestSync: () => void;
+  handleSimpleTestSync: () => void;
+  handleForceSync: () => void;
+  handleStorageTest: () => void;
+  handleDebugDriveFiles: () => void;
+  handleClearDriveCache: () => void;
+  handleTestDriveAPI: () => void;
+  handleDebugNotesState: () => void;
 };
 
 export function Toolbar({
@@ -79,6 +99,11 @@ export function Toolbar({
   activeNoteId,
   theme,
   isLoggedIn,
+  isSyncing,
+  lastSyncTime,
+  syncError,
+  isOnline,
+  pendingSyncs,
   editorRef,
   setActiveNoteId,
   handleCreateNewNote,
@@ -87,6 +112,14 @@ export function Toolbar({
   toggleTheme,
   handleCloudSync,
   handleSignOut,
+  handleTestSync,
+  handleSimpleTestSync,
+  handleForceSync,
+  handleStorageTest,
+  handleDebugDriveFiles,
+  handleClearDriveCache,
+  handleTestDriveAPI,
+  handleDebugNotesState,
 }: ToolbarProps) {
   // Formatting button handlers
   const handleHeading1 = () => {
@@ -199,6 +232,52 @@ export function Toolbar({
       // Keep editor focused after formatting
       setTimeout(() => editor.focus(), 0);
     }
+  };
+
+  // Sync status helper functions
+  const getSyncStatusIcon = () => {
+    if (!isOnline) {
+      return <AlertCircle className="w-4 h-4 text-orange-500" />;
+    }
+    if (isSyncing) {
+      return <Loader2 className="w-4 h-4 animate-spin" />;
+    }
+    if (syncError) {
+      return <AlertCircle className="w-4 h-4 text-destructive" />;
+    }
+    if (pendingSyncs > 0) {
+      return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+    }
+    if (lastSyncTime) {
+      return <CheckCircle className="w-4 h-4 text-green-500" />;
+    }
+    return <Cloud className="w-4 h-4" />;
+  };
+
+  const getSyncStatusText = () => {
+    if (!isOnline) {
+      return `Offline (${pendingSyncs} pending)`;
+    }
+    if (isSyncing) {
+      return "Syncing...";
+    }
+    if (syncError) {
+      return "Sync Error";
+    }
+    if (pendingSyncs > 0) {
+      return `${pendingSyncs} changes pending sync`;
+    }
+    if (lastSyncTime) {
+      const timeAgo = Math.floor((Date.now() - lastSyncTime) / 1000);
+      if (timeAgo < 60) {
+        return "Synced just now";
+      } else if (timeAgo < 3600) {
+        return `Synced ${Math.floor(timeAgo / 60)}m ago`;
+      } else {
+        return `Synced ${Math.floor(timeAgo / 3600)}h ago`;
+      }
+    }
+    return isLoggedIn ? "Sync to Cloud" : "Sign in & Sync";
   };
 
   return (
@@ -462,15 +541,67 @@ export function Toolbar({
             <TooltipContent>More</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleCloudSync}>
-              <Cloud className="w-4 h-4 mr-2" />
-              <span>{isLoggedIn ? "Sync to Cloud" : "Sign in & Sync"}</span>
+            <DropdownMenuItem
+              onClick={handleCloudSync}
+              disabled={isSyncing || !isOnline}
+              className={cn(
+                "flex items-center",
+                (isSyncing || !isOnline) && "opacity-50 cursor-not-allowed"
+              )}
+            >
+              {getSyncStatusIcon()}
+              <span className="ml-2">{getSyncStatusText()}</span>
             </DropdownMenuItem>
-            {isLoggedIn && (
-              <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="w-4 h-4 mr-2" />
-                <span>Sign Out</span>
+            {syncError && (
+              <DropdownMenuItem
+                onClick={handleCloudSync}
+                disabled={isSyncing || !isOnline}
+                className="flex items-center text-orange-600"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span className="ml-2">Retry Sync</span>
               </DropdownMenuItem>
+            )}
+            {isLoggedIn && (
+              <>
+                <DropdownMenuItem onClick={handleSimpleTestSync}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <span>Simple Test Sync</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleTestSync}>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <span>Test Sync with Sample Data</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleForceSync}>
+                  <Cloud className="w-4 h-4 mr-2" />
+                  <span>Force Sync Current Notes</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleStorageTest}>
+                  <Database className="w-4 h-4 mr-2" />
+                  <span>Test Storage System</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDebugDriveFiles}>
+                  <Search className="w-4 h-4 mr-2" />
+                  <span>Debug Drive Files</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleClearDriveCache}>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  <span>Clear Drive Cache</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleTestDriveAPI}>
+                  <Search className="w-4 h-4 mr-2" />
+                  <span>Test Drive API</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleDebugNotesState}>
+                  <FileText className="w-4 h-4 mr-2" />
+                  <span>Debug Notes State</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="w-4 h-4 mr-2" />
+                  <span>Sign Out</span>
+                </DropdownMenuItem>
+              </>
             )}
             <DropdownMenuItem onClick={handleExport}>
               <Download className="w-4 h-4 mr-2" />
