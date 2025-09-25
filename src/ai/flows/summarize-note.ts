@@ -5,44 +5,35 @@
  * - summarizeNote - A function that handles the note summarization process.
  */
 
-'use server';
+import { SummarizeNoteInput, SummarizeNoteOutput } from "./summarize-note.dtos";
 
-import {ai} from '@/ai/genkit';
-import {
-  SummarizeNoteInput,
-  SummarizeNoteInputSchema,
-  SummarizeNoteOutput,
-  SummarizeNoteOutputSchema,
-} from './summarize-note.dtos';
-
-const summaryPrompt = ai.definePrompt({
-    name: 'summaryPrompt',
-    input: { schema: SummarizeNoteInputSchema },
-    output: { schema: SummarizeNoteOutputSchema },
-    prompt: `You are an expert at summarizing notes.
-        Your task is to provide a concise summary of the following note.
-        Note: {{{note}}}
-    `
-});
-
-const summarizeNoteFlow = ai.defineFlow(
-  {
-    name: 'summarizeNoteFlow',
-    inputSchema: SummarizeNoteInputSchema,
-    outputSchema: SummarizeNoteOutputSchema,
-  },
-  async (input) => {
-    const {output} = await summaryPrompt(input);
-    return output!;
-  }
-);
-
-
+// For static export, we'll use a simple client-side summarization approach
+// This is a placeholder implementation that can be replaced with actual AI integration
 export async function summarizeNote(
   input: SummarizeNoteInput
 ): Promise<SummarizeNoteOutput> {
   try {
-    return await summarizeNoteFlow(input);
+    // Simple text summarization logic for static export
+    const text = input.note;
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+
+    if (sentences.length <= 3) {
+      return {
+        summary: text.substring(0, 200) + (text.length > 200 ? "..." : ""),
+      };
+    }
+
+    // Take first few sentences as summary
+    const summarySentences = sentences.slice(
+      0,
+      Math.min(3, Math.ceil(sentences.length / 3))
+    );
+    const summary = summarySentences.join(". ").trim() + ".";
+
+    return {
+      summary:
+        summary.length > 300 ? summary.substring(0, 300) + "..." : summary,
+    };
   } catch (error) {
     console.error("Failed to summarize note:", error);
     return {

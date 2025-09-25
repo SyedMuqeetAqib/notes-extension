@@ -3,7 +3,7 @@
 echo "Building TabulaNote Chrome Extension..."
 
 # Build the Next.js app
-npm run build
+yarn build
 
 # Copy existing icon files to the out directory
 echo "Copying icon files..."
