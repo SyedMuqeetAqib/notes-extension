@@ -12,7 +12,18 @@ import {
 } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
-import { Pencil, Info, Copy, Download as DownloadIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  Pencil,
+  Info,
+  Copy,
+  Download as DownloadIcon,
+  Loader2,
+  Cloud,
+  User,
+  Upload,
+  AlertCircle,
+} from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
 import type { Note } from "@/lib/google-drive";
 import { StorageTest } from "@/lib/storage-test";
@@ -21,6 +32,9 @@ import BlockNoteEditor, {
 } from "./BlockNoteEditor/blocknote";
 
 const LazyImageDialog = dynamic(() => import("@/components/image-dialog"));
+const LazyStatusIndicator = dynamic(() =>
+  import("@/components/status-indicator").then((mod) => mod.StatusIndicator)
+);
 const LazyToolbar = dynamic(
   () => import("@/components/toolbar").then((mod) => mod.Toolbar),
   {
@@ -507,23 +521,85 @@ export default function Home() {
   const [isGapiLoaded, setIsGapiLoaded] = React.useState(false);
   const [isDriveReady, setIsDriveReady] = React.useState(false);
   const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+  const [isGoogleSDKInitialized, setIsGoogleSDKInitialized] =
+    React.useState(false);
 
   const saveTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const prevActiveNoteIdRef = React.useRef<string | null>(null);
   const [isSyncing, setIsSyncing] = React.useState(false);
+  const [isFullSyncing, setIsFullSyncing] = React.useState(false); // For UI lock during full sync
   const [lastSyncTime, setLastSyncTime] = React.useState<number | null>(null);
+  const [lastFullSyncTime, setLastFullSyncTime] = React.useState<number | null>(
+    null
+  ); // Track last full sync separately
   const [syncError, setSyncError] = React.useState<string | null>(null);
   const [isOnline, setIsOnline] = React.useState(true);
   const [pendingSyncs, setPendingSyncs] = React.useState<number>(0);
   const [retryCount, setRetryCount] = React.useState(0);
   const maxRetries = 3;
 
+  // Separate handler for sign-in to maintain user gesture chain
+  const handleSignIn = React.useCallback(async () => {
+    console.log("🔐 [Sign In] User initiated sign in");
+
+    if (!isGapiLoaded) {
+      console.log("❌ [Sign In] Google API not loaded yet");
+      toast({
+        title: "Google API not loaded yet.",
+        description: "Please wait a moment and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (isLoggedIn) {
+      console.log("ℹ️ [Sign In] Already logged in");
+      toast({
+        title: "Already signed in",
+        description: "You're already connected to Google Drive.",
+      });
+      return;
+    }
+
+    try {
+      console.log(
+        "🚀 [Sign In] Reinitializing GIS client and calling requestToken"
+      );
+
+      // Reinitialize the GIS client to ensure tokenClient is properly set up
+      await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
+        console.log("✅ [Auth] OAuth callback received, token acquired");
+        GoogleDrive.setToken(tokenResponse);
+        GoogleDrive.saveTokenToStorage(tokenResponse);
+        setIsLoggedIn(true);
+        setIsDriveReady(true);
+        toast({
+          title: "Signed in to Google Drive",
+          description: "Click 'Sync' button to fetch your notes from Drive.",
+          duration: 5000,
+        });
+      });
+
+      // Call requestToken synchronously from user interaction to avoid popup blocker
+      GoogleDrive.requestToken();
+    } catch (error) {
+      console.error("❌ [Sign In] Failed to open sign-in popup:", error);
+      toast({
+        title: "Sign-in failed",
+        description:
+          "Could not open sign-in window. Please check your popup blocker.",
+        variant: "destructive",
+      });
+    }
+  }, [isGapiLoaded, isLoggedIn, toast]);
+
   const handleCloudSync = React.useCallback(
-    async (showToast = true, isAutoSync = false) => {
+    async (showToast = true, isAutoSync = false, uploadOnly = false) => {
       console.log("🔄 [Sync] Starting cloud sync...", {
         showToast,
         isAutoSync,
+        uploadOnly,
         isGapiLoaded,
         isLoggedIn,
         isOnline,
@@ -543,9 +619,13 @@ export default function Home() {
       }
 
       if (!isLoggedIn) {
-        console.log("❌ [Sync] Not logged in, requesting token");
+        console.log("❌ [Sync] Not logged in");
         if (showToast) {
-          GoogleDrive.requestToken();
+          toast({
+            title: "Please sign in first",
+            description: "Sign in to Google Drive to sync your notes.",
+            variant: "destructive",
+          });
         }
         return;
       }
@@ -574,163 +654,208 @@ export default function Home() {
       setIsSyncing(true);
       setSyncError(null);
 
+      // Set full sync state for UI lock (only for full sync, not upload-only)
+      if (!uploadOnly) {
+        setIsFullSyncing(true);
+        console.log("🔒 [Sync] UI locked for full sync operation");
+      }
+
       try {
         if (showToast && !isAutoSync) {
-          toast({ title: "Syncing notes with Google Drive..." });
-        }
-
-        console.log("📥 [Sync] Step 1: Fetching notes from Drive...");
-        // 1. Fetch notes from Drive
-        const cloudNotes = await GoogleDrive.loadNotesFromDrive();
-        console.log("📥 [Sync] Cloud notes fetched:", {
-          cloudNotesCount: cloudNotes ? cloudNotes.length : 0,
-          hasCloudNotes: !!cloudNotes,
-          cloudNotes: cloudNotes
-            ? cloudNotes.map((n) => ({
-                id: n.id,
-                name: n.name,
-                lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
-              }))
-            : [],
-        });
-
-        console.log("🔄 [Sync] Step 2: Merging local and cloud notes...");
-        // 2. Merge local and cloud notes with enhanced conflict resolution
-        // CRITICAL: Save current editor content before syncing
-        console.log("💾 [Sync] Saving current editor content before sync...");
-        const notesWithCurrentContent = saveCurrentEditorContent();
-
-        // Use notes with current content instead of localStorage to get the latest data
-        const localNotes = notesWithCurrentContent;
-        console.log(
-          "📋 [Sync] Local notes loaded from state with current content:",
-          {
-            localNotesCount: localNotes.length,
-            notesFromState: true,
-            hasCurrentContent: true,
-            localNotes: localNotes.map((n) => ({
-              id: n.id,
-              name: n.name,
-              lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
-            })),
-          }
-        );
-
-        const combinedNotes: { [key: string]: Note } = {};
-
-        // Add all local notes to the map
-        for (const note of localNotes) {
-          combinedNotes[note.id] = note;
-        }
-        console.log(
-          "📋 [Sync] Local notes added to merge map:",
-          Object.keys(combinedNotes).length
-        );
-
-        // Add/update with cloud notes using intelligent conflict resolution
-        if (cloudNotes) {
-          console.log("🔄 [Sync] Processing cloud notes for merge...");
-          let conflictsResolved = 0;
-          let newNotesAdded = 0;
-
-          for (const cloudNote of cloudNotes) {
-            const localNote = combinedNotes[cloudNote.id];
-
-            if (localNote) {
-              // Note exists in both - resolve conflict
-              const timeDiff = Math.abs(
-                cloudNote.lastUpdatedAt - localNote.lastUpdatedAt
-              );
-
-              console.log(
-                `🔍 [Sync] Conflict resolution for note "${localNote.name}":`,
-                {
-                  localLastUpdated: new Date(
-                    localNote.lastUpdatedAt
-                  ).toISOString(),
-                  cloudLastUpdated: new Date(
-                    cloudNote.lastUpdatedAt
-                  ).toISOString(),
-                  timeDiff: timeDiff,
-                  localName: localNote.name,
-                  cloudName: cloudNote.name,
-                  namesMatch: localNote.name === cloudNote.name,
-                }
-              );
-
-              if (timeDiff < 5000) {
-                // Less than 5 seconds difference - likely same edit
-                // Keep the one with more recent timestamp
-                if (cloudNote.lastUpdatedAt > localNote.lastUpdatedAt) {
-                  combinedNotes[cloudNote.id] = cloudNote;
-                  console.log(
-                    `🔄 [Sync] Conflict resolved for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
-                  );
-                } else {
-                  console.log(
-                    `🔄 [Sync] Conflict resolved for "${localNote.name}" - using local version (time diff: ${timeDiff}ms)`
-                  );
-                }
-                conflictsResolved++;
-              } else {
-                // Significant time difference - prioritize local changes
-                const localContent = localNote.content;
-                const cloudContent = cloudNote.content;
-
-                // Always prioritize local changes if they're more recent
-                if (localNote.lastUpdatedAt > cloudNote.lastUpdatedAt) {
-                  console.log(
-                    `✅ [Sync] Local changes to "${localNote.name}" are newer - keeping local version (time diff: ${timeDiff}ms)`
-                  );
-                  // Keep local version (already in combinedNotes)
-                } else {
-                  // Cloud is newer, but check if it's a significant change
-                  if (localContent === cloudContent) {
-                    // Same content, use cloud version
-                    combinedNotes[cloudNote.id] = cloudNote;
-                    console.log(
-                      `🔄 [Sync] Same content for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
-                    );
-                  } else {
-                    // Different content - use cloud version but warn user
-                    combinedNotes[cloudNote.id] = cloudNote;
-                    console.log(
-                      `⚠️ [Sync] Note "${cloudNote.name}" was updated on another device (time diff: ${timeDiff}ms)`
-                    );
-                  }
-                }
-                conflictsResolved++;
-              }
-            } else {
-              // Note doesn't exist locally, add it
-              combinedNotes[cloudNote.id] = cloudNote;
-              newNotesAdded++;
-              console.log(
-                `➕ [Sync] New note added from cloud: "${cloudNote.name}"`
-              );
-            }
-          }
-
-          console.log("🔄 [Sync] Merge summary:", {
-            conflictsResolved,
-            newNotesAdded,
-            totalCloudNotes: cloudNotes.length,
+          toast({
+            title: uploadOnly
+              ? "Uploading changes..."
+              : "Syncing notes with Google Drive...",
           });
         }
 
-        const mergedNotes = Object.values(combinedNotes);
-        console.log("📊 [Sync] Final merged notes count:", mergedNotes.length);
+        // CRITICAL: Save current editor content before any sync operation
+        console.log("💾 [Sync] Saving current editor content before sync...");
+        const notesWithCurrentContent = saveCurrentEditorContent();
 
-        console.log("💾 [Sync] Step 3: Saving merged notes back to Drive...");
-        // 3. Save merged notes back to Drive
-        await GoogleDrive.saveNotesToDrive(mergedNotes);
-        console.log("✅ [Sync] Notes saved to Drive successfully");
+        if (uploadOnly) {
+          // Upload-only sync: Just upload current content, no fetch/merge
+          console.log(
+            "📤 [Sync] Upload-only mode: uploading current content..."
+          );
+          await GoogleDrive.uploadNotesToDrive(notesWithCurrentContent);
+          console.log("✅ [Sync] Upload-only sync completed successfully!");
 
-        console.log("🔄 [Sync] Step 4: Updating local state...");
-        // 4. Update local state with merged notes
-        setNotes(mergedNotes);
-        localStorage.setItem("tabula-notes", JSON.stringify(mergedNotes));
-        console.log("✅ [Sync] Local state updated");
+          if (showToast && !isAutoSync) {
+            toast({
+              title: "Upload successful!",
+              description: "Your changes have been saved to Google Drive.",
+            });
+          }
+        } else {
+          // Full sync: Fetch, merge, and upload
+          console.log("📥 [Sync] Step 1: Fetching notes from Drive...");
+          // 1. Fetch notes from Drive
+          const cloudNotes = await GoogleDrive.loadNotesFromDrive();
+          console.log("📥 [Sync] Cloud notes fetched:", {
+            cloudNotesCount: cloudNotes ? cloudNotes.length : 0,
+            hasCloudNotes: !!cloudNotes,
+            cloudNotes: cloudNotes
+              ? cloudNotes.map((n) => ({
+                  id: n.id,
+                  name: n.name,
+                  lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
+                }))
+              : [],
+          });
+
+          console.log("🔄 [Sync] Step 2: Merging local and cloud notes...");
+          // 2. Merge local and cloud notes with enhanced conflict resolution
+          // Use notes with current content instead of localStorage to get the latest data
+          const localNotes = notesWithCurrentContent;
+          console.log(
+            "📋 [Sync] Local notes loaded from state with current content:",
+            {
+              localNotesCount: localNotes.length,
+              notesFromState: true,
+              hasCurrentContent: true,
+              localNotes: localNotes.map((n) => ({
+                id: n.id,
+                name: n.name,
+                lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
+              })),
+            }
+          );
+
+          const combinedNotes: { [key: string]: Note } = {};
+
+          // Add all local notes to the map
+          for (const note of localNotes) {
+            combinedNotes[note.id] = note;
+          }
+          console.log(
+            "📋 [Sync] Local notes added to merge map:",
+            Object.keys(combinedNotes).length
+          );
+
+          // Add/update with cloud notes using intelligent conflict resolution
+          if (cloudNotes) {
+            console.log("🔄 [Sync] Processing cloud notes for merge...");
+            let conflictsResolved = 0;
+            let newNotesAdded = 0;
+
+            for (const cloudNote of cloudNotes) {
+              const localNote = combinedNotes[cloudNote.id];
+
+              if (localNote) {
+                // Note exists in both - resolve conflict
+                const timeDiff = Math.abs(
+                  cloudNote.lastUpdatedAt - localNote.lastUpdatedAt
+                );
+
+                console.log(
+                  `🔍 [Sync] Conflict resolution for note "${localNote.name}":`,
+                  {
+                    localLastUpdated: new Date(
+                      localNote.lastUpdatedAt
+                    ).toISOString(),
+                    cloudLastUpdated: new Date(
+                      cloudNote.lastUpdatedAt
+                    ).toISOString(),
+                    timeDiff: timeDiff,
+                    localName: localNote.name,
+                    cloudName: cloudNote.name,
+                    namesMatch: localNote.name === cloudNote.name,
+                  }
+                );
+
+                if (timeDiff < 5000) {
+                  // Less than 5 seconds difference - likely same edit
+                  // Keep the one with more recent timestamp
+                  if (cloudNote.lastUpdatedAt > localNote.lastUpdatedAt) {
+                    combinedNotes[cloudNote.id] = cloudNote;
+                    console.log(
+                      `🔄 [Sync] Conflict resolved for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
+                    );
+                  } else {
+                    console.log(
+                      `🔄 [Sync] Conflict resolved for "${localNote.name}" - using local version (time diff: ${timeDiff}ms)`
+                    );
+                  }
+                  conflictsResolved++;
+                } else {
+                  // Significant time difference - prioritize local changes
+                  const localContent = localNote.content;
+                  const cloudContent = cloudNote.content;
+
+                  // Always prioritize local changes if they're more recent
+                  if (localNote.lastUpdatedAt > cloudNote.lastUpdatedAt) {
+                    console.log(
+                      `✅ [Sync] Local changes to "${localNote.name}" are newer - keeping local version (time diff: ${timeDiff}ms)`
+                    );
+                    // Keep local version (already in combinedNotes)
+                  } else {
+                    // Cloud is newer, but check if it's a significant change
+                    if (localContent === cloudContent) {
+                      // Same content, use cloud version
+                      combinedNotes[cloudNote.id] = cloudNote;
+                      console.log(
+                        `🔄 [Sync] Same content for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
+                      );
+                    } else {
+                      // Different content - use cloud version but warn user
+                      combinedNotes[cloudNote.id] = cloudNote;
+                      console.log(
+                        `⚠️ [Sync] Note "${cloudNote.name}" was updated on another device (time diff: ${timeDiff}ms)`
+                      );
+                    }
+                  }
+                  conflictsResolved++;
+                }
+              } else {
+                // Note doesn't exist locally, add it
+                combinedNotes[cloudNote.id] = cloudNote;
+                newNotesAdded++;
+                console.log(
+                  `➕ [Sync] New note added from cloud: "${cloudNote.name}"`
+                );
+              }
+            }
+
+            console.log("🔄 [Sync] Merge summary:", {
+              conflictsResolved,
+              newNotesAdded,
+              totalCloudNotes: cloudNotes.length,
+            });
+          }
+
+          const mergedNotes = Object.values(combinedNotes);
+          console.log(
+            "📊 [Sync] Final merged notes count:",
+            mergedNotes.length
+          );
+
+          console.log("💾 [Sync] Step 3: Saving merged notes back to Drive...");
+          // 3. Save merged notes back to Drive
+          await GoogleDrive.saveNotesToDrive(mergedNotes);
+          console.log("✅ [Sync] Notes saved to Drive successfully");
+
+          console.log("🔄 [Sync] Step 4: Updating local state...");
+          // 4. Update local state with merged notes
+          setNotes(mergedNotes);
+          localStorage.setItem("tabula-notes", JSON.stringify(mergedNotes));
+          console.log("✅ [Sync] Local state updated");
+
+          if (showToast && !isAutoSync) {
+            toast({
+              title: "Sync successful!",
+              description: "Your notes are up to date.",
+            });
+          }
+
+          // Update last full sync time
+          const fullSyncTime = Date.now();
+          setLastFullSyncTime(fullSyncTime);
+          localStorage.setItem(
+            "tabula-last-full-sync",
+            fullSyncTime.toString()
+          );
+        }
 
         // Update sync status
         setLastSyncTime(Date.now());
@@ -739,16 +864,9 @@ export default function Home() {
         setRetryCount(0); // Reset retry count on successful sync
 
         console.log("✅ [Sync] Sync completed successfully!", {
-          finalNotesCount: mergedNotes.length,
+          uploadOnly,
           timestamp: new Date().toISOString(),
         });
-
-        if (showToast && !isAutoSync) {
-          toast({
-            title: "Sync successful!",
-            description: "Your notes are up to date.",
-          });
-        }
       } catch (e) {
         console.error("❌ [Sync] Sync error occurred:", e);
         const errorMessage = e instanceof Error ? e.message : String(e);
@@ -765,7 +883,7 @@ export default function Home() {
 
           setTimeout(() => {
             setRetryCount((prev) => prev + 1);
-            handleCloudSync(false, true); // Retry silently
+            handleCloudSync(false, true, uploadOnly); // Retry silently with same uploadOnly setting
           }, retryDelay);
         } else {
           // Max retries reached or manual sync
@@ -775,6 +893,7 @@ export default function Home() {
             retryCount,
             maxRetries,
             isAutoSync,
+            uploadOnly,
           });
           if (showToast) {
             toast({
@@ -789,6 +908,7 @@ export default function Home() {
         }
       } finally {
         setIsSyncing(false);
+        setIsFullSyncing(false); // Always release UI lock
         console.log("🔓 [Sync] Sync lock released");
       }
     },
@@ -804,51 +924,72 @@ export default function Home() {
     ]
   );
 
+  // Track if initial sync has been performed
+  const initialSyncDoneRef = React.useRef(false);
+
   React.useEffect(() => {
     // This effect runs once on mount to set the initial client state
     setIsClient(true);
     const state = initialStateRef.current;
     document.documentElement.classList.toggle("dark", state.theme === "dark");
 
+    // Load last full sync time from localStorage
+    const storedLastFullSync = localStorage.getItem("tabula-last-full-sync");
+    if (storedLastFullSync) {
+      setLastFullSyncTime(parseInt(storedLastFullSync, 10));
+    }
+
     // Initialize Google Drive API
     const initDrive = async () => {
       try {
         await GoogleDrive.loadGapi();
+
+        // Check for existing token before setting isGapiLoaded
+        const storedToken = await GoogleDrive.getTokenFromStorage();
+
+        // Set isGapiLoaded first, then update other states
         setIsGapiLoaded(true);
 
-        // Check for existing token
-        const storedToken = await GoogleDrive.getTokenFromStorage();
         if (storedToken) {
           GoogleDrive.setToken(storedToken);
           setIsLoggedIn(true);
           setIsDriveReady(true);
-          // Perform a silent sync on load - use setTimeout to avoid dependency issues
-          setTimeout(() => {
-            handleCloudSync(false);
-          }, 1000);
         }
 
         await GoogleDrive.initGis(GOOGLE_CLIENT_ID, (tokenResponse) => {
+          console.log("✅ [Auth] OAuth callback received, token acquired");
           GoogleDrive.setToken(tokenResponse);
           GoogleDrive.saveTokenToStorage(tokenResponse);
           setIsLoggedIn(true);
           setIsDriveReady(true);
-          toast({ title: "Signed in to Google Drive" });
-          // Sync after successful login - use setTimeout to avoid dependency issues
-          setTimeout(() => {
-            handleCloudSync();
-          }, 1000);
+          toast({
+            title: "Signed in to Google Drive",
+            description: "Click 'Sync' button to fetch your notes from Drive.",
+            duration: 5000,
+          });
+
+          // Removed: Automatic sync after sign-in
+          // User will manually click sync button when ready
         });
+
+        // Mark Google SDK as fully initialized
+        setIsGoogleSDKInitialized(true);
       } catch (error) {
         console.error("Failed to initialize Google Drive", error);
         toast({
           title: "Could not connect to Google Drive",
           variant: "destructive",
         });
+        // Still mark as initialized even if there's an error
+        setIsGoogleSDKInitialized(true);
       }
     };
     initDrive();
-  }, [toast]); // Removed handleCloudSync from dependencies
+  }, [toast]);
+
+  // Removed: Initial sync on page load
+  // Users will manually sync when they want to fetch updates from Drive
+  // This prevents overwriting content if user starts typing immediately after page load
 
   // Load note content when activeNoteId changes
   React.useEffect(() => {
@@ -978,20 +1119,8 @@ export default function Home() {
           "✅ [Content Change] Notes saved to localStorage successfully"
         );
 
-        // Auto-sync to Google Drive if logged in and not already syncing
-        if (isLoggedIn && !isSyncing) {
-          console.log("🔄 [Content Change] Scheduling auto-sync...");
-          // Clear existing timeout
-          if (syncTimeoutRef.current) {
-            clearTimeout(syncTimeoutRef.current);
-          }
-
-          // Set new timeout for auto-sync
-          syncTimeoutRef.current = setTimeout(() => {
-            console.log("🔄 [Content Change] Executing auto-sync...");
-            handleCloudSync(false, true); // Silent auto-sync
-          }, 2000); // Auto-sync after 2 seconds of inactivity
-        }
+        // Note: Auto-sync on content change has been removed
+        // Users should manually sync or wait for daily sync reminder
       } catch (error) {
         console.error("Failed to save note to local storage", error);
         toast({
@@ -1000,7 +1129,7 @@ export default function Home() {
           description: "Could not save your note to local storage.",
         });
       }
-    }, 500); // Debounce time in ms
+    }, 500); // Debounce time in ms (0.5 seconds)
   };
 
   // BlockNote handles formatting internally, so we don't need these functions
@@ -1354,14 +1483,8 @@ export default function Home() {
     setActiveNoteId(newNote.id);
     localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
 
-    // Auto-sync new note to Google Drive
-    if (isLoggedIn && !isSyncing) {
-      console.log("🔄 [Create Note] Scheduling auto-sync for new note...");
-      setTimeout(() => {
-        console.log("🔄 [Create Note] Executing auto-sync for new note...");
-        handleCloudSync(false, true); // Silent auto-sync
-      }, 1000);
-    }
+    // Note: Auto-sync on note creation has been removed
+    // Users should manually sync or wait for daily sync reminder
 
     toast({
       title: "New Note Created",
@@ -1369,7 +1492,9 @@ export default function Home() {
     });
   };
 
-  const handleDeleteNote = (noteIdToDelete: string) => {
+  const handleDeleteNote = async (noteIdToDelete: string) => {
+    console.log("🗑️ [Delete] Starting note deletion:", noteIdToDelete);
+
     const updatedNotes = notes.filter((n) => n.id !== noteIdToDelete);
     setNotes(updatedNotes);
     localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
@@ -1385,25 +1510,39 @@ export default function Home() {
       }
     }
 
-    // Auto-sync deletion to Google Drive
-    if (isLoggedIn && !isSyncing) {
-      setTimeout(() => {
-        handleCloudSync(false, true); // Silent auto-sync
-      }, 1000);
+    // Delete from Google Drive immediately without triggering sync
+    if (isLoggedIn) {
+      try {
+        console.log(
+          "🗑️ [Delete] Deleting note from Google Drive:",
+          noteIdToDelete
+        );
+        await GoogleDrive.deleteNoteFromDrive(noteIdToDelete);
+        console.log("✅ [Delete] Note deleted from Google Drive successfully");
+        toast({
+          title: "Note Deleted",
+          description: "Note removed from local storage and Google Drive.",
+        });
+      } catch (error) {
+        console.error("❌ [Delete] Failed to delete from Google Drive:", error);
+        toast({
+          title: "Note Deleted Locally",
+          description:
+            "Note removed locally, but failed to delete from Google Drive.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Note Deleted",
+      });
     }
-
-    toast({
-      title: "Note Deleted",
-    });
   };
 
-  const handleRenameNote = (noteId: string, newName: string) => {
+  const handleRenameNote = async (noteId: string, newName: string) => {
     const now = Date.now();
-    const updatedNotes = notes.map((n) =>
-      n.id === noteId ? { ...n, name: newName, lastUpdatedAt: now } : n
-    );
 
-    console.log("📝 [Rename] Note renamed:", {
+    console.log("📝 [Rename] Note rename requested:", {
       noteId,
       oldName: notes.find((n) => n.id === noteId)?.name,
       newName,
@@ -1411,25 +1550,60 @@ export default function Home() {
       timestamp: new Date(now).toISOString(),
     });
 
+    // Cancel any pending content change syncs to prevent conflicts
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      console.log("🔄 [Rename] Cancelled pending content change sync");
+    }
+
+    // Save current editor content first to ensure we have the latest content
+    console.log("💾 [Rename] Saving current editor content before rename...");
+    const notesWithCurrentContent = saveCurrentEditorContent();
+
+    // Update the note name in the notes with current content
+    const updatedNotes = notesWithCurrentContent.map((n) =>
+      n.id === noteId ? { ...n, name: newName, lastUpdatedAt: now } : n
+    );
+
+    console.log("📝 [Rename] Note renamed locally:", {
+      noteId,
+      newName,
+      lastUpdatedAt: now,
+    });
+
     setNotes(updatedNotes);
     localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
 
-    // Auto-sync rename to Google Drive with longer delay to ensure local changes are saved
+    // Immediately sync rename to Google Drive without debounce
     if (isLoggedIn && !isSyncing) {
-      console.log("🔄 [Rename] Scheduling auto-sync in 5 seconds...");
-      setTimeout(() => {
-        console.log("🔄 [Rename] Executing auto-sync for renamed note...");
-        console.log("🔄 [Rename] Current notes state before sync:", {
-          notesCount: notes.length,
-          renamedNote: notes.find((n) => n.id === noteId),
+      console.log(
+        "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
+      );
+      try {
+        await GoogleDrive.uploadNotesToDrive(updatedNotes);
+        console.log(
+          "✅ [Rename] Note renamed and synced to Google Drive successfully"
+        );
+        toast({
+          title: "Note Renamed & Synced",
+          description: "Your note has been renamed and synced to Google Drive.",
         });
-        handleCloudSync(false, true); // Silent auto-sync
-      }, 5000); // Increased delay to 5 seconds
+      } catch (error) {
+        console.error(
+          "❌ [Rename] Failed to sync renamed note to Google Drive:",
+          error
+        );
+        toast({
+          title: "Note Renamed Locally",
+          description: "Rename successful, but sync to Google Drive failed.",
+          variant: "destructive",
+        });
+      }
+    } else {
+      toast({
+        title: "Note Renamed Successfully",
+      });
     }
-
-    toast({
-      title: "Note Renamed Successfully",
-    });
   };
 
   const handleStartRename = () => {
@@ -1453,6 +1627,10 @@ export default function Home() {
     GoogleDrive.signOut();
     setIsLoggedIn(false);
     setIsDriveReady(false);
+    setLastSyncTime(null); // Clear sync status
+    setSyncError(null); // Clear any sync errors
+    setPendingSyncs(0); // Clear pending syncs
+    initialSyncDoneRef.current = false; // Reset initial sync flag
     toast({ title: "Signed out from Google Drive." });
   };
 
@@ -1628,7 +1806,7 @@ export default function Home() {
       });
 
       // Save notes with current content to Google Drive
-      await GoogleDrive.saveNotesToDrive(notesWithCurrentContent);
+      await GoogleDrive.uploadNotesToDrive(notesWithCurrentContent);
 
       toast({
         title: "Force sync successful!",
@@ -1804,9 +1982,10 @@ export default function Home() {
       if (pendingSyncs > 0 && isLoggedIn && !isSyncing) {
         toast({
           title: "Connection restored",
-          description: "Syncing your changes...",
+          description: "You can now sync your changes manually.",
         });
-        handleCloudSync(false, true); // Silent auto-sync
+        // Note: Auto-sync on connection restore has been removed
+        // Users should manually sync when ready
       }
     };
 
@@ -1825,6 +2004,104 @@ export default function Home() {
       window.removeEventListener("offline", handleOffline);
     };
   }, [pendingSyncs, isLoggedIn, isSyncing, handleCloudSync, toast]);
+
+  // Removed: Automatic sync on page visibility change
+  // Users will manually sync when they want to fetch updates from Drive
+  // This prevents overwriting content if user starts typing immediately after returning to tab
+
+  // 24-hour sync reminder system
+  React.useEffect(() => {
+    if (!isLoggedIn || !lastFullSyncTime) return;
+
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    const CHECK_INTERVAL = 60 * 1000; // Check every minute
+
+    const checkSyncReminder = () => {
+      const timeSinceLastSync = Date.now() - lastFullSyncTime;
+
+      if (timeSinceLastSync > TWENTY_FOUR_HOURS) {
+        // Show reminder notification
+        const lastReminderShown = localStorage.getItem(
+          "tabula-last-reminder-shown"
+        );
+        const lastReminderTime = lastReminderShown
+          ? parseInt(lastReminderShown, 10)
+          : 0;
+        const timeSinceLastReminder = Date.now() - lastReminderTime;
+
+        // Only show reminder once every 6 hours to avoid spam
+        if (timeSinceLastReminder > 6 * 60 * 60 * 1000) {
+          console.log("⏰ [Sync Reminder] Showing 24-hour sync reminder");
+          toast({
+            title: "Sync Recommended",
+            description:
+              "It's been over 24 hours since your last sync. Click the sync button to get updates from Drive.",
+            duration: 10000,
+          });
+          localStorage.setItem(
+            "tabula-last-reminder-shown",
+            Date.now().toString()
+          );
+        }
+      }
+    };
+
+    // Check immediately
+    checkSyncReminder();
+
+    // Then check every minute
+    const intervalId = setInterval(checkSyncReminder, CHECK_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [isLoggedIn, lastFullSyncTime, toast]);
+
+  // Daily auto-sync system - syncs once per day after midnight when app loads
+  React.useEffect(() => {
+    if (!isLoggedIn || !isGapiLoaded) return;
+
+    const performDailyAutoSync = async () => {
+      const now = new Date();
+      const today = now.toDateString(); // e.g., "Mon Jan 01 2024"
+      const lastSyncDate = localStorage.getItem("tabula-last-daily-sync");
+
+      // Check if it's after midnight (00:00) and we haven't synced today
+      const isAfterMidnight = now.getHours() >= 0;
+      const hasSyncedToday = lastSyncDate === today;
+
+      if (isAfterMidnight && !hasSyncedToday) {
+        console.log("🔄 [Daily Auto-Sync] Starting automatic daily sync...", {
+          currentTime: now.toISOString(),
+          today,
+          lastSyncDate,
+          isAfterMidnight,
+          hasSyncedToday,
+        });
+
+        try {
+          // Trigger full sync using existing sync flow (shows modal, disables UI)
+          await handleCloudSync(false, true, false); // showToast=false, isAutoSync=true, uploadOnly=false
+
+          // Mark today as synced
+          localStorage.setItem("tabula-last-daily-sync", today);
+
+          console.log("✅ [Daily Auto-Sync] Daily sync completed successfully");
+        } catch (error) {
+          console.error("❌ [Daily Auto-Sync] Daily sync failed:", error);
+          // Error handling is already managed by handleCloudSync
+        }
+      } else {
+        console.log("⏭️ [Daily Auto-Sync] Skipping daily sync", {
+          isAfterMidnight,
+          hasSyncedToday,
+          today,
+          lastSyncDate,
+        });
+      }
+    };
+
+    // Run once when component mounts and dependencies are ready
+    performDailyAutoSync();
+  }, [isLoggedIn, isGapiLoaded, handleCloudSync]);
 
   const activeNote = notes.find((n) => n.id === activeNoteId);
   const formatDate = (timestamp: number) => {
@@ -1848,6 +2125,40 @@ export default function Home() {
     } ${date.getDate()}, ${date.getFullYear()}`;
   };
 
+  const getNextSyncTime = () => {
+    const now = new Date();
+    const today = now.toDateString();
+    const lastSyncDate = localStorage.getItem("tabula-last-daily-sync");
+
+    // If we haven't synced today and it's after midnight, next sync is "Today at 12:00 AM"
+    if (lastSyncDate !== today && now.getHours() >= 0) {
+      return "Today at 12:00 AM";
+    }
+
+    // If we've already synced today, next sync is tomorrow at midnight
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const months = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "May",
+      "Jun",
+      "Jul",
+      "Aug",
+      "Sep",
+      "Oct",
+      "Nov",
+      "Dec",
+    ];
+    return `Tomorrow at 12:00 AM (${
+      months[tomorrow.getMonth()]
+    } ${tomorrow.getDate()})`;
+  };
+
   if (!isClient) {
     return (
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300"></main>
@@ -1857,6 +2168,25 @@ export default function Home() {
   return (
     <TooltipProvider delayDuration={100}>
       <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
+        {/* Full Sync Loading Overlay */}
+        {isFullSyncing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div className="flex flex-col items-center gap-4 rounded-lg bg-card p-8 shadow-lg border">
+              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+              <div className="text-center">
+                <h3 className="text-lg font-semibold mb-2">
+                  Syncing with Google Drive
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Please wait while we fetch and merge your notes...
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Do not close this window
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="fixed top-0 left-0 right-0 h-12 flex justify-between items-center z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
           <div className="flex-1"></div>
           <div className="flex-1 flex justify-center items-center group">
@@ -1896,7 +2226,48 @@ export default function Home() {
               </>
             )}
           </div>
-          <div className="flex-1 flex justify-end">
+          <div className="flex-1 flex justify-end items-center gap-2">
+            {/* Status Indicator */}
+            <LazyStatusIndicator
+              isLoggedIn={isLoggedIn}
+              isSyncing={isSyncing}
+              isFullSyncing={isFullSyncing}
+              syncError={syncError}
+              isOnline={isOnline}
+              pendingSyncs={pendingSyncs}
+              lastSyncTime={lastSyncTime}
+              lastFullSyncTime={lastFullSyncTime}
+              isGoogleSDKInitialized={isGoogleSDKInitialized}
+              onSyncClick={handleCloudSync}
+              onSignInClick={handleSignIn}
+              onSignOutClick={handleSignOut}
+              tooltipContent={
+                <div className="text-sm space-y-1">
+                  {!isLoggedIn ? (
+                    "Connect to Google Drive to sync your notes"
+                  ) : isFullSyncing ? (
+                    "Syncing your notes with Google Drive..."
+                  ) : isSyncing ? (
+                    "Uploading changes to Google Drive..."
+                  ) : syncError ? (
+                    "There was an error syncing. Click to retry."
+                  ) : (
+                    <>
+                      <div>Your notes are synced with Google Drive</div>
+                      {lastFullSyncTime && (
+                        <div className="text-xs text-muted-foreground">
+                          Last sync: {formatDate(lastFullSyncTime)}
+                        </div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        Next auto-sync: {getNextSyncTime()}
+                      </div>
+                    </>
+                  )}
+                </div>
+              }
+            />
+
             {isClient && activeNote && (
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -1911,9 +2282,9 @@ export default function Home() {
                 <TooltipContent
                   side="bottom"
                   align="end"
-                  className="max-w-md max-h-[80vh] p-4"
+                  className="max-w-sm p-3"
                 >
-                  <div className="text-xs space-y-4 overflow-y-auto max-h-[calc(80vh-2rem)] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-muted-foreground/30">
+                  <div className="text-xs space-y-3">
                     <div>
                       <div className="font-semibold text-sm mb-2">
                         Note Information
@@ -1929,194 +2300,33 @@ export default function Home() {
 
                     <div>
                       <div className="font-semibold text-sm mb-2">
-                        Keyboard Shortcuts
+                        Quick Shortcuts
                       </div>
-
-                      <div>
-                        <div className="font-medium mb-1">Text Formatting</div>
-                        <div className="space-y-1 text-muted-foreground">
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + B
-                            </kbd>{" "}
-                            Bold
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + I
-                            </kbd>{" "}
-                            Italic
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + U
-                            </kbd>{" "}
-                            Underline
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + S
-                            </kbd>{" "}
-                            Strikethrough
-                          </div>
+                      <div className="space-y-1 text-muted-foreground">
+                        <div>
+                          <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                            Ctrl/Cmd + B
+                          </kbd>{" "}
+                          Bold
                         </div>
-                      </div>
-
-                      <div className="mt-2">
-                        <div className="font-medium mb-1">Headings</div>
-                        <div className="space-y-1 text-muted-foreground">
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 1
-                            </kbd>{" "}
-                            Heading 1
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 2
-                            </kbd>{" "}
-                            Heading 2
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 3
-                            </kbd>{" "}
-                            Heading 3
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 0
-                            </kbd>{" "}
-                            Paragraph
-                          </div>
+                        <div>
+                          <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                            Ctrl/Cmd + I
+                          </kbd>{" "}
+                          Italic
                         </div>
-                      </div>
-
-                      <div className="mt-2">
-                        <div className="font-medium mb-1">Lists</div>
-                        <div className="space-y-1 text-muted-foreground">
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 8
-                            </kbd>{" "}
-                            Bullet List
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + 7
-                            </kbd>{" "}
-                            Numbered List
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + C
-                            </kbd>{" "}
-                            Checklist
-                          </div>
+                        <div>
+                          <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                            Ctrl/Cmd + Shift + 1/2/3
+                          </kbd>{" "}
+                          Headings
                         </div>
-                      </div>
-
-                      <div className="mt-2">
-                        <div className="font-medium mb-1">Text Colors</div>
-                        <div className="space-y-1 text-muted-foreground">
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + R
-                            </kbd>{" "}
-                            Red
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + G
-                            </kbd>{" "}
-                            Green
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + B
-                            </kbd>{" "}
-                            Blue
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + Y
-                            </kbd>{" "}
-                            Yellow
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + P
-                            </kbd>{" "}
-                            Purple
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + O
-                            </kbd>{" "}
-                            Orange
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Shift + K
-                            </kbd>{" "}
-                            Black (default)
-                          </div>
+                        <div>
+                          <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
+                            Ctrl/Cmd + Shift + 8/7
+                          </kbd>{" "}
+                          Lists
                         </div>
-                      </div>
-
-                      <div className="mt-2">
-                        <div className="font-medium mb-1">General</div>
-                        <div className="space-y-1 text-muted-foreground">
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + S
-                            </kbd>{" "}
-                            Save (auto-saves)
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Z
-                            </kbd>{" "}
-                            Undo
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + Y
-                            </kbd>{" "}
-                            Redo
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + A
-                            </kbd>{" "}
-                            Select All
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + C
-                            </kbd>{" "}
-                            Copy
-                          </div>
-                          <div>
-                            <kbd className="px-1 py-0.5 bg-muted rounded text-xs">
-                              Ctrl/Cmd + V
-                            </kbd>{" "}
-                            Paste
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="font-semibold text-sm mb-2">Features</div>
-                      <div className="text-muted-foreground space-y-1">
-                        <div>• Click note title to rename</div>
-                        <div>• Drag & drop images to insert</div>
-                        <div>• Auto-save every 500ms</div>
-                        <div>• Google Drive sync available</div>
-                        <div>• AI-powered summarization</div>
-                        <div>• Export notes as .txt files</div>
-                        <div>• Dark/Light theme toggle</div>
                       </div>
                     </div>
                   </div>
@@ -2135,7 +2345,7 @@ export default function Home() {
                 ref={editorRef}
                 initialContent={convertHtmlToBlockNote(activeNote.content)}
                 onChange={handleContentChange}
-                autoFocus={true}
+                autoFocus={!isFullSyncing} // Don't auto-focus during full sync
                 theme={theme as "light" | "dark"}
               />
             </div>
@@ -2150,7 +2360,9 @@ export default function Home() {
               theme,
               isLoggedIn,
               isSyncing,
+              isFullSyncing,
               lastSyncTime,
+              lastFullSyncTime,
               syncError,
               isOnline,
               pendingSyncs,
@@ -2160,16 +2372,9 @@ export default function Home() {
               handleDeleteNote,
               handleExport,
               toggleTheme,
-              handleCloudSync: () => handleCloudSync(true),
+              handleSignIn,
+              handleCloudSync: () => handleCloudSync(true, false, false), // Manual sync button always does full sync
               handleSignOut,
-              handleTestSync,
-              handleSimpleTestSync,
-              handleForceSync,
-              handleStorageTest,
-              handleDebugDriveFiles,
-              handleClearDriveCache,
-              handleTestDriveAPI,
-              handleDebugNotesState,
             }}
           />
         )}

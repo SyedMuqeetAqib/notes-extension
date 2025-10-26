@@ -32,10 +32,8 @@ declare global {
       }
     }
   }
+  const gapi: any;
 }
-
-// Access gapi through the global window object
-declare const gapi: typeof window.gapi;
 
 export type Note = {
   id: string;
@@ -87,48 +85,24 @@ let gisLoaded = false;
 
 // Cache for folder and file IDs to prevent repeated API calls
 let cachedAppFolderId: string | null = null;
-let cachedNoteFiles: Map<string, string> | null = null; // noteId -> fileId
+let cachedNotesFileId: string | null = null;
 let cacheTimestamp = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 function clearCache() {
   cachedAppFolderId = null;
-  cachedNoteFiles = null;
+  cachedNotesFileId = null;
   cacheTimestamp = 0;
   console.log("🗑️ [Google Drive] Cache cleared");
 }
 
 /**
- * Generate a sanitized filename for a note
- * Uses note name for readability in Google Drive, with ID suffix for uniqueness
+ * Generate a filename with current timestamp
  */
-function generateNoteFileName(note: Note): string {
-  // Sanitize note name for filesystem (remove invalid chars, limit length)
-  const safeName = note.name
-    .replace(/[^a-z0-9-_\s]/gi, "_")
-    .replace(/\s+/g, "_")
-    .substring(0, 50);
-
-  // Format: {sanitized-name}--{note-id}.json
-  // Using double dash (--) to clearly separate name from ID
-  return `${safeName}--${note.id}.json`;
-}
-
-/**
- * Extract note ID from filename
- */
-function extractNoteIdFromFilename(filename: string): string | null {
-  // Pattern: {name}--{noteId}.json
-  // Look for the last occurrence of -- to handle names with dashes
-  const match = filename.match(/--([^-]+(?:-[^-]+)*)\.json$/);
-  if (match) {
-    return match[1];
-  }
-
-  // Fallback: Try old format for backward compatibility
-  // Old pattern: {name}-{noteId}.json or tabula-note-{noteId}.json
-  const oldMatch = filename.match(/^(?:.*?-)?(.+?)\.json$/);
-  return oldMatch ? oldMatch[1] : null;
+function generateNotesFileName(): string {
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:.]/g, "-").slice(0, -5); // Remove milliseconds and colons
+  return `${NOTES_FILE_NAME_PREFIX}-${timestamp}.json`;
 }
 
 /**
@@ -226,29 +200,36 @@ export async function debugListDriveFiles(): Promise<void> {
     const files = response.result.files || [];
     console.log("📋 [Google Drive Debug] Files found:", {
       count: files.length,
-      files: files.map((file: any) => {
-        const noteId = extractNoteIdFromFilename(file.name);
-        return {
-          id: file.id,
-          name: file.name,
-          extractedNoteId: noteId,
-          mimeType: file.mimeType,
-          size: file.size,
-          createdTime: file.createdTime,
-          modifiedTime: file.modifiedTime,
-        };
-      }),
-    });
-
-    // Get note file mapping
-    const noteFilesMap = await getAllNoteFiles(folderId);
-    console.log("📋 [Google Drive Debug] Note file mapping:", {
-      count: noteFilesMap.size,
-      mapping: Array.from(noteFilesMap.entries()).map(([noteId, fileId]) => ({
-        noteId,
-        fileId,
+      files: files.map((file: any) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        size: file.size,
+        createdTime: file.createdTime,
+        modifiedTime: file.modifiedTime,
       })),
     });
+
+    // Also check for any files with "Untitled" in the root
+    const rootResponse = await gapi.client.drive.files.list({
+      q: `name contains 'Untitled' and trashed=false`,
+      fields: "files(id, name, mimeType, parents, size, createdTime)",
+    });
+
+    const untitledFiles = rootResponse.result.files || [];
+    if (untitledFiles.length > 0) {
+      console.log("⚠️ [Google Drive Debug] Found Untitled files in root:", {
+        count: untitledFiles.length,
+        files: untitledFiles.map((file: any) => ({
+          id: file.id,
+          name: file.name,
+          mimeType: file.mimeType,
+          parents: file.parents,
+          size: file.size,
+          createdTime: file.createdTime,
+        })),
+      });
+    }
   } catch (error) {
     console.error("❌ [Google Drive Debug] Error listing files:", error);
   }
@@ -462,147 +443,99 @@ async function createAppFolder(): Promise<string | null> {
   }
 }
 
-/**
- * Get all note files in the app folder
- * Returns a map of noteId -> fileId
- */
-async function getAllNoteFiles(folderId: string): Promise<Map<string, string>> {
+async function getNotesFileId(folderId: string): Promise<string | null> {
   // Check cache first
   const now = Date.now();
-  if (cachedNoteFiles && now - cacheTimestamp < CACHE_DURATION) {
+  if (cachedNotesFileId && now - cacheTimestamp < CACHE_DURATION) {
     console.log(
-      "💾 [Google Drive] Using cached note files:",
-      cachedNoteFiles.size,
-      "files"
+      "💾 [Google Drive] Using cached notes file ID:",
+      cachedNotesFileId
     );
-    return cachedNoteFiles;
+    return cachedNotesFileId;
   }
 
   console.log(
-    "🔍 [Google Drive] Searching for all note files in folder:",
+    "🔍 [Google Drive] Searching for most recent notes file in folder:",
     folderId
   );
-
   try {
-    const noteFilesMap = new Map<string, string>();
-
-    // Search for all JSON files in the folder
+    // Search for files that start with our prefix and are in the correct folder
     const response = await gapi.client.drive.files.list({
-      q: `'${folderId}' in parents and mimeType='application/json' and trashed=false`,
-      fields: "files(id, name)",
-      pageSize: 1000, // Get all files
+      q: `'${folderId}' in parents and name contains '${NOTES_FILE_NAME_PREFIX}' and trashed=false`,
+      fields: "files(id, name, createdTime, modifiedTime)",
+      orderBy: "modifiedTime desc", // Get the most recently modified file
+      pageSize: 1, // Only get the most recent one
     });
 
-    console.log("📡 [Google Drive] Note files search response:", {
+    console.log("📡 [Google Drive] Notes file search response:", {
       status: response.status,
       filesFound: response.result.files?.length || 0,
     });
 
-    const files = response.result.files || [];
-
-    for (const file of files) {
-      const noteId = extractNoteIdFromFilename(file.name!);
-      if (noteId) {
-        noteFilesMap.set(noteId, file.id!);
-      } else {
-        console.log(
-          "⚠️ [Google Drive] Could not extract note ID from filename:",
-          file.name
-        );
-      }
-    }
-
-    cachedNoteFiles = noteFilesMap;
+    const files = response.result.files;
+    const fileId = files && files.length > 0 ? files[0].id! : null;
+    cachedNotesFileId = fileId;
     cacheTimestamp = now;
 
-    console.log("✅ [Google Drive] Note files found and cached:", {
-      totalFiles: files.length,
-      mappedNotes: noteFilesMap.size,
-    });
-
-    return noteFilesMap;
-  } catch (err) {
-    console.error("❌ [Google Drive] Error searching for note files:", err);
-    return new Map<string, string>();
-  }
-}
-
-/**
- * Delete a note file from Google Drive
- */
-async function deleteNoteFile(fileId: string, noteId: string): Promise<void> {
-  console.log("🗑️ [Google Drive] Deleting note file:", {
-    noteId,
-    fileId,
-  });
-
-  try {
-    await gapi.client.drive.files.delete({
-      fileId: fileId,
-    });
-
-    console.log("✅ [Google Drive] Note file deleted successfully:", noteId);
-
-    // Remove from cache if cached
-    if (cachedNoteFiles) {
-      cachedNoteFiles.delete(noteId);
-    }
-  } catch (err) {
-    console.error("❌ [Google Drive] Error deleting note file:", err);
-    throw err;
-  }
-}
-
-/**
- * Delete a single note from Google Drive by note ID
- * This is a public function to be used when deleting a note without syncing
- */
-export async function deleteNoteFromDrive(noteId: string): Promise<void> {
-  console.log("🗑️ [Google Drive] Starting delete operation for note:", noteId);
-
-  if (!gapi.client.getToken()) {
-    console.error("❌ [Google Drive] Not signed in - cannot delete");
-    throw new Error("Not signed in");
-  }
-
-  try {
-    const folderId = await getAppFolderId();
-    if (!folderId) {
-      console.log("📁 [Google Drive] No app folder found - nothing to delete");
-      return;
-    }
-
-    const existingFiles = await getAllNoteFiles(folderId);
-    const fileId = existingFiles.get(noteId);
-
     if (fileId) {
-      await deleteNoteFile(fileId, noteId);
       console.log(
-        "✅ [Google Drive] Note deleted successfully from Drive:",
-        noteId
+        "✅ [Google Drive] Most recent notes file found and cached:",
+        {
+          fileId,
+          fileName: files[0].name,
+          modifiedTime: files[0].modifiedTime,
+        }
       );
     } else {
-      console.log("⚠️ [Google Drive] No file found for note:", noteId);
+      console.log("❌ [Google Drive] No notes files found");
     }
+
+    return fileId;
   } catch (err) {
-    console.error("❌ [Google Drive] Error deleting note from drive:", err);
-    throw err;
+    console.error("❌ [Google Drive] Error searching for notes file:", err);
+    return null;
   }
 }
 
-export async function saveNotesToDrive(
-  notes: Note[],
-  deletedNoteIds: string[] = []
-): Promise<void> {
+export async function saveNotesToDrive(notes: Note[]): Promise<void> {
   console.log("🔄 [Google Drive] Starting save operation...", {
     notesCount: notes.length,
-    deletedCount: deletedNoteIds.length,
     timestamp: new Date().toISOString(),
+    notesArray: notes, // Log the actual notes array
   });
 
   if (!gapi.client.getToken()) {
     console.error("❌ [Google Drive] Not signed in - cannot save");
     throw new Error("Not signed in");
+  }
+
+  // If no notes provided, create a test note to ensure we're not saving empty data
+  let notesToSave = notes;
+  if (notes.length === 0) {
+    console.log(
+      "⚠️ [Google Drive] No notes provided, creating debug test note..."
+    );
+    const testNote = createTestNoteWithContent();
+    notesToSave = [testNote];
+    console.log("📝 [Google Drive] Debug test note created:", {
+      testNoteId: testNote.id,
+      testNoteName: testNote.name,
+      testNoteContentLength: testNote.content.length,
+    });
+  } else {
+    console.log("📝 [Google Drive] Using provided notes:", {
+      notesCount: notes.length,
+      noteDetails: notes.map((note, index) => ({
+        index,
+        id: note.id,
+        name: note.name,
+        contentLength: note.content.length,
+        hasContent: note.content && note.content.length > 0,
+        contentPreview: note.content
+          ? note.content.substring(0, 100) + "..."
+          : "NO CONTENT",
+      })),
+    });
   }
 
   // Prevent concurrent sync operations
@@ -625,54 +558,191 @@ export async function saveNotesToDrive(
   lastSyncTime = now;
   console.log("🔒 [Google Drive] Sync lock acquired");
 
-  try {
-    let folderId = await getAppFolderId();
-    console.log(
-      "📁 [Google Drive] App folder ID:",
-      folderId ? "Found" : "Not found"
-    );
+  let folderId = await getAppFolderId();
+  console.log(
+    "📁 [Google Drive] App folder ID:",
+    folderId ? "Found" : "Not found"
+  );
 
+  if (!folderId) {
+    console.log("📁 [Google Drive] Creating new app folder...");
+    folderId = await createAppFolder();
     if (!folderId) {
-      console.log("📁 [Google Drive] Creating new app folder...");
-      folderId = await createAppFolder();
-      if (!folderId) {
-        console.error("❌ [Google Drive] Failed to create app folder");
-        throw new Error("Could not create app folder in Google Drive.");
+      console.error("❌ [Google Drive] Failed to create app folder");
+      throw new Error("Could not create app folder in Google Drive.");
+    }
+    console.log("✅ [Google Drive] App folder created successfully:", folderId);
+  }
+
+  let fileId = await getNotesFileId(folderId);
+  console.log(
+    "📄 [Google Drive] Notes file ID:",
+    fileId ? "Found" : "Not found"
+  );
+
+  // Add metadata to track sync information
+  const syncData = {
+    notes: notesToSave,
+    syncMetadata: {
+      lastSync: Date.now(),
+      version: "1.0",
+      appVersion: "tabula-notes-v1",
+    },
+  };
+
+  const content = JSON.stringify(syncData, null, 2);
+  const blob = new Blob([content], { type: "application/json" });
+
+  console.log("📊 [Google Drive] Sync data prepared:", {
+    dataSize: content.length,
+    notesCount: notesToSave.length,
+    syncMetadata: syncData.syncMetadata,
+  });
+
+  // Console log the complete data structure that should be stored in Google Drive
+  console.log("🔍 [Google Drive] Complete data structure to be stored:", {
+    structure: "Object with 'notes' array and 'syncMetadata' object",
+    example: {
+      notes: [
+        {
+          id: "note-1234567890",
+          name: "My Note Title",
+          content: "JSON string of BlockNote editor blocks",
+          createdAt: 1234567890000,
+          lastUpdatedAt: 1234567890000,
+        },
+      ],
+      syncMetadata: {
+        lastSync: 1234567890000,
+        version: "1.0",
+        appVersion: "tabula-notes-v1",
+      },
+    },
+    actualData: syncData,
+    noteContentExample:
+      notesToSave.length > 0
+        ? {
+            noteId: notesToSave[0].id,
+            noteName: notesToSave[0].name,
+            contentPreview: notesToSave[0].content.substring(0, 200) + "...",
+            contentType: "BlockNote JSON blocks (not HTML)",
+          }
+        : "No notes to show example",
+  });
+
+  // Determine if we should create a new file or update existing one
+  const isNewFile = !fileId;
+  const fileName = isNewFile ? generateNotesFileName() : "tabula-notes.json";
+
+  const metadata = {
+    name: fileName,
+    mimeType: "application/json",
+    parents: isNewFile ? [folderId] : undefined, // Only set parents for new files
+    description:
+      "Tabula Notes - Auto-synced note data with formatting preserved",
+  };
+
+  console.log("🚀 [Google Drive] Uploading to Drive:", {
+    method: isNewFile ? "CREATE + PATCH (new file)" : "PATCH (update existing)",
+    fileName: fileName,
+    folderId: folderId,
+    fileId: fileId,
+    isNewFile: isNewFile,
+    contentSize: content.length,
+    hasValidContent: content.length > 0,
+    contentPreview: content.substring(0, 200) + "...",
+    metadata: {
+      name: metadata.name,
+      mimeType: metadata.mimeType,
+      parents: metadata.parents,
+      description: metadata.description,
+    },
+  });
+
+  try {
+    let targetFileId: string;
+
+    if (isNewFile) {
+      // Create new file
+      console.log("🚀 [Google Drive] Step 1: Creating new file metadata...");
+
+      const createResponse = await gapi.client.drive.files.create({
+        resource: metadata,
+        fields: "id, name, parents",
+      });
+
+      console.log("📡 [Google Drive] File creation response:", {
+        status: createResponse.status,
+        fileId: createResponse.result.id,
+        fileName: createResponse.result.name,
+        parents: createResponse.result.parents,
+        expectedFolderId: folderId,
+        folderAssignmentCorrect:
+          createResponse.result.parents?.includes(folderId),
+      });
+
+      if (!createResponse.result.id) {
+        throw new Error("Failed to create file - no file ID returned");
       }
+
+      targetFileId = createResponse.result.id;
+    } else {
+      // Update existing file
       console.log(
-        "✅ [Google Drive] App folder created successfully:",
-        folderId
+        "🚀 [Google Drive] Step 1: Updating existing file metadata..."
       );
+
+      const updateResponse = await gapi.client.drive.files.update({
+        fileId: fileId,
+        resource: {
+          name: metadata.name,
+          description: metadata.description,
+        },
+        fields: "id, name, parents",
+      });
+
+      console.log("📡 [Google Drive] File update response:", {
+        status: updateResponse.status,
+        fileId: updateResponse.result.id,
+        fileName: updateResponse.result.name,
+        parents: updateResponse.result.parents,
+        expectedFolderId: folderId,
+        folderAssignmentCorrect:
+          updateResponse.result.parents?.includes(folderId),
+      });
+
+      targetFileId = fileId;
     }
 
-    // Get existing note files
-    const existingFiles = await getAllNoteFiles(folderId);
-    console.log("📋 [Google Drive] Existing files in Drive:", {
-      count: existingFiles.size,
-      noteIds: Array.from(existingFiles.keys()),
+    console.log("🚀 [Google Drive] Step 2: Uploading file content...");
+
+    // Upload the content using media upload
+    const response = await gapi.client.request({
+      path: `/upload/drive/v3/files/${targetFileId}`,
+      method: "PATCH",
+      params: { uploadType: "media" },
+      body: content,
     });
 
-    // Save/update each note
-    for (const note of notes) {
-      await saveIndividualNote(note, folderId, existingFiles.get(note.id));
+    console.log("📡 [Google Drive] Content upload response:", {
+      status: response.status,
+      statusText: response.statusText,
+      success: response.status >= 200 && response.status < 300,
+    });
+
+    if (response.status < 200 || response.status >= 300) {
+      console.error("❌ [Google Drive] Content upload failed:", response.body);
+      throw new Error(`Failed to upload file content: ${response.body}`);
     }
 
-    // Delete removed notes
-    for (const deletedNoteId of deletedNoteIds) {
-      const fileId = existingFiles.get(deletedNoteId);
-      if (fileId) {
-        await deleteNoteFile(fileId, deletedNoteId);
-      } else {
-        console.log(
-          "⚠️ [Google Drive] No file found for deleted note:",
-          deletedNoteId
-        );
-      }
-    }
+    // Clear cache since we modified the file
+    clearCache();
 
-    console.log("✅ [Google Drive] Save operation completed!", {
-      savedNotes: notes.length,
-      deletedNotes: deletedNoteIds.length,
+    console.log("✅ [Google Drive] Save successful!", {
+      operation: isNewFile ? "Created new file" : "Updated existing file",
+      fileId: targetFileId,
+      fileName: fileName,
+      folderId: folderId,
       timestamp: new Date().toISOString(),
     });
   } catch (err) {
@@ -691,214 +761,6 @@ export async function saveNotesToDrive(
     // Always release the sync lock
     syncInProgress = false;
     console.log("🔓 [Google Drive] Sync lock released");
-  }
-}
-
-/**
- * Upload-only sync function - uploads notes to Drive without fetching/merging
- * Used for auto-sync to prevent content loss during typing
- */
-export async function uploadNotesToDrive(notes: Note[]): Promise<void> {
-  console.log("📤 [Google Drive] Starting upload-only operation...", {
-    notesCount: notes.length,
-    timestamp: new Date().toISOString(),
-  });
-
-  if (!gapi.client.getToken()) {
-    console.error("❌ [Google Drive] Not signed in - cannot upload");
-    throw new Error("Not signed in");
-  }
-
-  // Prevent concurrent sync operations
-  if (syncInProgress) {
-    console.log("⏸️ [Google Drive] Upload already in progress, skipping...");
-    return;
-  }
-
-  // Prevent rapid successive syncs
-  const now = Date.now();
-  if (now - lastSyncTime < MIN_SYNC_INTERVAL) {
-    console.log("⏱️ [Google Drive] Upload too soon, skipping...", {
-      timeSinceLastSync: now - lastSyncTime,
-      minInterval: MIN_SYNC_INTERVAL,
-    });
-    return;
-  }
-
-  syncInProgress = true;
-  lastSyncTime = now;
-  console.log("🔒 [Google Drive] Upload lock acquired");
-
-  try {
-    let folderId = await getAppFolderId();
-    console.log(
-      "📁 [Google Drive] App folder ID:",
-      folderId ? "Found" : "Not found"
-    );
-
-    if (!folderId) {
-      console.log("📁 [Google Drive] Creating new app folder...");
-      folderId = await createAppFolder();
-      if (!folderId) {
-        console.error("❌ [Google Drive] Failed to create app folder");
-        throw new Error("Could not create app folder in Google Drive.");
-      }
-      console.log(
-        "✅ [Google Drive] App folder created successfully:",
-        folderId
-      );
-    }
-
-    // Get existing note files for reference (but don't fetch content)
-    const existingFiles = await getAllNoteFiles(folderId);
-    console.log("📋 [Google Drive] Existing files in Drive:", {
-      count: existingFiles.size,
-      noteIds: Array.from(existingFiles.keys()),
-    });
-
-    // Upload each note (create or update)
-    for (const note of notes) {
-      await saveIndividualNote(note, folderId, existingFiles.get(note.id));
-    }
-
-    console.log("✅ [Google Drive] Upload-only operation completed!", {
-      uploadedNotes: notes.length,
-      timestamp: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error("❌ [Google Drive] Error uploading notes to drive:", err);
-    const error = err as { result?: { error?: { message: string } } };
-    const errorMessage =
-      error.result?.error?.message ||
-      "An unknown error occurred while uploading to Drive.";
-    console.error("❌ [Google Drive] Error details:", {
-      errorMessage,
-      errorType: typeof err,
-      errorStack: err instanceof Error ? err.stack : undefined,
-    });
-    throw new Error(errorMessage);
-  } finally {
-    // Always release the sync lock
-    syncInProgress = false;
-    console.log("🔓 [Google Drive] Upload lock released");
-  }
-}
-
-/**
- * Save or update an individual note file
- */
-async function saveIndividualNote(
-  note: Note,
-  folderId: string,
-  existingFileId?: string
-): Promise<void> {
-  const fileName = generateNoteFileName(note);
-  const isNewFile = !existingFileId;
-
-  console.log("💾 [Google Drive] Saving individual note:", {
-    noteId: note.id,
-    noteName: note.name,
-    fileName: fileName,
-    isNewFile: isNewFile,
-    existingFileId: existingFileId,
-  });
-
-  // Prepare note data with metadata
-  const noteData = {
-    note: note,
-    syncMetadata: {
-      lastSync: Date.now(),
-      version: "1.0",
-      appVersion: "tabula-notes-v1",
-    },
-  };
-
-  const content = JSON.stringify(noteData, null, 2);
-
-  try {
-    let targetFileId: string;
-
-    if (isNewFile) {
-      // Create new file
-      console.log("🚀 [Google Drive] Creating new file:", fileName);
-
-      const metadata = {
-        name: fileName,
-        mimeType: "application/json",
-        parents: [folderId],
-        description: `Tabula Note: ${note.name}`,
-      };
-
-      const createResponse = await gapi.client.drive.files.create({
-        resource: metadata,
-        fields: "id, name, parents",
-      });
-
-      console.log("📡 [Google Drive] File creation response:", {
-        status: createResponse.status,
-        fileId: createResponse.result.id,
-        fileName: createResponse.result.name,
-      });
-
-      if (!createResponse.result.id) {
-        throw new Error("Failed to create file - no file ID returned");
-      }
-
-      targetFileId = createResponse.result.id;
-    } else {
-      // Update existing file (also update filename in case note name changed)
-      console.log("🚀 [Google Drive] Updating existing file:", fileName);
-
-      const updateResponse = await gapi.client.drive.files.update({
-        fileId: existingFileId,
-        resource: {
-          name: fileName,
-          description: `Tabula Note: ${note.name}`,
-        },
-        fields: "id, name",
-      });
-
-      console.log("📡 [Google Drive] File metadata update response:", {
-        status: updateResponse.status,
-        fileId: updateResponse.result.id,
-        fileName: updateResponse.result.name,
-      });
-
-      targetFileId = existingFileId;
-    }
-
-    // Upload the content using media upload
-    const response = await gapi.client.request({
-      path: `/upload/drive/v3/files/${targetFileId}`,
-      method: "PATCH",
-      params: { uploadType: "media" },
-      body: content,
-    });
-
-    console.log("📡 [Google Drive] Content upload response:", {
-      status: response.status,
-      noteId: note.id,
-      success: response.status >= 200 && response.status < 300,
-    });
-
-    if (response.status < 200 || response.status >= 300) {
-      console.error("❌ [Google Drive] Content upload failed:", response.body);
-      throw new Error(`Failed to upload file content: ${response.body}`);
-    }
-
-    // Update cache
-    if (cachedNoteFiles) {
-      cachedNoteFiles.set(note.id, targetFileId);
-    }
-
-    console.log("✅ [Google Drive] Note saved successfully:", {
-      noteId: note.id,
-      fileName: fileName,
-      fileId: targetFileId,
-    });
-  } catch (err) {
-    console.error("❌ [Google Drive] Error saving individual note:", err);
-    throw err;
   }
 }
 
@@ -1151,77 +1013,104 @@ export async function loadNotesFromDrive(): Promise<Note[] | null> {
       return null; // No app folder, so no notes to load
     }
 
-    const noteFilesMap = await getAllNoteFiles(folderId);
-    console.log("📄 [Google Drive] Note files found:", {
-      count: noteFilesMap.size,
-      noteIds: Array.from(noteFilesMap.keys()),
-    });
-
-    if (noteFilesMap.size === 0) {
-      console.log("📄 [Google Drive] No note files found - no notes to load");
-      return []; // Return empty array instead of null
-    }
-
-    console.log("📡 [Google Drive] Fetching file contents from Drive...");
-
-    // Load all note files in parallel
-    const loadPromises = Array.from(noteFilesMap.entries()).map(
-      async ([noteId, fileId]) => {
-        try {
-          const response = await gapi.client.drive.files.get({
-            fileId: fileId,
-            alt: "media",
-          });
-
-          if (response.status !== 200) {
-            console.error(
-              "❌ [Google Drive] Failed to load file for note:",
-              noteId
-            );
-            return null;
-          }
-
-          const data = JSON.parse(response.body as any);
-
-          // Handle both new format (with metadata) and direct note format
-          if (data.note) {
-            // New format with metadata
-            console.log("📋 [Google Drive] Loaded note with metadata:", noteId);
-            return data.note as Note;
-          } else if (data.id) {
-            // Direct note format (fallback)
-            console.log(
-              "📋 [Google Drive] Loaded note (direct format):",
-              noteId
-            );
-            return data as Note;
-          } else {
-            console.warn(
-              "⚠️ [Google Drive] Unexpected note format for:",
-              noteId
-            );
-            return null;
-          }
-        } catch (err) {
-          console.error(
-            "❌ [Google Drive] Error loading individual note:",
-            noteId,
-            err
-          );
-          return null;
-        }
-      }
+    const fileId = await getNotesFileId(folderId);
+    console.log(
+      "📄 [Google Drive] Notes file ID for load:",
+      fileId ? "Found" : "Not found"
     );
 
-    const loadedNotes = await Promise.all(loadPromises);
+    if (!fileId) {
+      console.log("📄 [Google Drive] No notes file found - no notes to load");
+      return null; // No notes file, so no notes to load
+    }
 
-    // Filter out null values (failed loads)
-    const notes = loadedNotes.filter((note): note is Note => note !== null);
+    console.log("📡 [Google Drive] Fetching file content from Drive...", {
+      fileId,
+    });
+    const response = await gapi.client.drive.files.get({
+      fileId: fileId,
+      alt: "media",
+    });
+
+    console.log("📡 [Google Drive] Load API Response:", {
+      status: response.status,
+      statusText: response.statusText,
+      success: response.status === 200,
+      bodySize: response.body ? String(response.body).length : 0,
+    });
+
+    if (response.status !== 200) {
+      console.error("❌ [Google Drive] Load failed:", response.body);
+      throw new Error(`Failed to load file: ${response.body}`);
+    }
+
+    // The body is a string, so we need to parse it as JSON.
+    // GAPI types are a bit tricky here, so we cast to 'any' first.
+    const data = JSON.parse(response.body as any);
+    console.log("📊 [Google Drive] Parsed data:", {
+      dataType: Array.isArray(data) ? "array" : typeof data,
+      hasNotes: !Array.isArray(data) && data.notes ? "yes" : "no",
+      notesCount: Array.isArray(data)
+        ? data.length
+        : data.notes
+        ? data.notes.length
+        : 0,
+    });
+
+    // Console log the complete data structure that was loaded from Google Drive
+    console.log("🔍 [Google Drive] Data structure loaded from Drive:", {
+      rawData: data,
+      dataStructure: {
+        isArray: Array.isArray(data),
+        hasNotesProperty: !Array.isArray(data) && data.notes,
+        hasSyncMetadata: !Array.isArray(data) && data.syncMetadata,
+        expectedStructure:
+          "Object with 'notes' array and 'syncMetadata' object",
+      },
+      notesPreview: Array.isArray(data)
+        ? data.slice(0, 2).map((note: any) => ({
+            id: note.id,
+            name: note.name,
+            contentLength: note.content?.length || 0,
+            createdAt: note.createdAt,
+            lastUpdatedAt: note.lastUpdatedAt,
+          }))
+        : data.notes
+        ? data.notes.slice(0, 2).map((note: any) => ({
+            id: note.id,
+            name: note.name,
+            contentLength: note.content?.length || 0,
+            createdAt: note.createdAt,
+            lastUpdatedAt: note.lastUpdatedAt,
+          }))
+        : "No notes found",
+      syncMetadata: !Array.isArray(data)
+        ? data.syncMetadata
+        : "Not available (old format)",
+    });
+
+    // Handle both old format (direct array) and new format (with metadata)
+    let notes: Note[];
+    if (Array.isArray(data)) {
+      // Old format - direct array of notes
+      console.log("📋 [Google Drive] Using old format (direct array)");
+      notes = data as Note[];
+    } else if (data.notes && Array.isArray(data.notes)) {
+      // New format - with sync metadata
+      console.log("📋 [Google Drive] Using new format (with metadata)", {
+        syncMetadata: data.syncMetadata,
+      });
+      notes = data.notes as Note[];
+    } else {
+      console.warn(
+        "⚠️ [Google Drive] Unexpected data format from Google Drive:",
+        data
+      );
+      return null;
+    }
 
     console.log("✅ [Google Drive] Load successful!", {
-      totalFiles: noteFilesMap.size,
-      successfulLoads: notes.length,
-      failedLoads: noteFilesMap.size - notes.length,
+      notesCount: notes.length,
       timestamp: new Date().toISOString(),
     });
 

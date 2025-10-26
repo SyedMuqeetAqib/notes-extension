@@ -53,9 +53,9 @@ import {
   AlertCircle,
   Loader2,
   RefreshCw,
-  Database,
-  Search,
-  FileText,
+  User,
+  LogIn,
+  Upload,
 } from "@/components/icons";
 
 type Note = {
@@ -72,26 +72,21 @@ type ToolbarProps = {
   theme: string;
   isLoggedIn: boolean;
   isSyncing: boolean;
+  isFullSyncing: boolean;
   lastSyncTime: number | null;
+  lastFullSyncTime: number | null;
   syncError: string | null;
   isOnline: boolean;
   pendingSyncs: number;
   editorRef: React.RefObject<any>;
   setActiveNoteId: (id: string) => void;
   handleCreateNewNote: () => void;
-  handleDeleteNote: (id: string) => void;
+  handleDeleteNote: (id: string) => Promise<void>;
   handleExport: () => void;
   toggleTheme: () => void;
+  handleSignIn: () => void;
   handleCloudSync: () => void;
   handleSignOut: () => void;
-  handleTestSync: () => void;
-  handleSimpleTestSync: () => void;
-  handleForceSync: () => void;
-  handleStorageTest: () => void;
-  handleDebugDriveFiles: () => void;
-  handleClearDriveCache: () => void;
-  handleTestDriveAPI: () => void;
-  handleDebugNotesState: () => void;
 };
 
 export function Toolbar({
@@ -100,7 +95,9 @@ export function Toolbar({
   theme,
   isLoggedIn,
   isSyncing,
+  isFullSyncing,
   lastSyncTime,
+  lastFullSyncTime,
   syncError,
   isOnline,
   pendingSyncs,
@@ -110,16 +107,9 @@ export function Toolbar({
   handleDeleteNote,
   handleExport,
   toggleTheme,
+  handleSignIn,
   handleCloudSync,
   handleSignOut,
-  handleTestSync,
-  handleSimpleTestSync,
-  handleForceSync,
-  handleStorageTest,
-  handleDebugDriveFiles,
-  handleClearDriveCache,
-  handleTestDriveAPI,
-  handleDebugNotesState,
 }: ToolbarProps) {
   // Formatting button handlers
   const handleHeading1 = () => {
@@ -236,11 +226,17 @@ export function Toolbar({
 
   // Sync status helper functions
   const getSyncStatusIcon = () => {
+    if (!isLoggedIn) {
+      return <LogIn className="w-4 h-4 text-blue-500" />;
+    }
     if (!isOnline) {
       return <AlertCircle className="w-4 h-4 text-orange-500" />;
     }
+    if (isFullSyncing) {
+      return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+    }
     if (isSyncing) {
-      return <Loader2 className="w-4 h-4 animate-spin" />;
+      return <Upload className="w-4 h-4 text-blue-500" />;
     }
     if (syncError) {
       return <AlertCircle className="w-4 h-4 text-destructive" />;
@@ -248,36 +244,61 @@ export function Toolbar({
     if (pendingSyncs > 0) {
       return <AlertCircle className="w-4 h-4 text-yellow-500" />;
     }
-    if (lastSyncTime) {
-      return <CheckCircle className="w-4 h-4 text-green-500" />;
+    if (lastFullSyncTime) {
+      const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+      const timeSinceLastSync = Date.now() - lastFullSyncTime;
+      if (timeSinceLastSync > TWENTY_FOUR_HOURS) {
+        return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+      }
+      // Show user profile with green border for signed-in users
+      return (
+        <div className="relative">
+          <User className="w-4 h-4 text-green-500" />
+          <div className="absolute -inset-1 rounded-full border-2 border-green-500 opacity-75"></div>
+        </div>
+      );
     }
     return <Cloud className="w-4 h-4" />;
   };
 
   const getSyncStatusText = () => {
+    if (!isLoggedIn) {
+      return "Sign in to sync";
+    }
     if (!isOnline) {
-      return `Offline (${pendingSyncs} pending)`;
+      return "Offline";
+    }
+    if (isFullSyncing) {
+      return "Syncing...";
     }
     if (isSyncing) {
-      return "Syncing...";
+      return "Uploading...";
     }
     if (syncError) {
       return "Sync Error";
     }
     if (pendingSyncs > 0) {
-      return `${pendingSyncs} changes pending sync`;
+      return "Pending sync";
     }
+
+    // Build multi-line status info for signed-in users
+    const lines = [];
+
+    // Last full sync line
+    lines.push(`Last sync: ${getTimeAgo(lastFullSyncTime)}`);
+
+    // Next sync line
+    lines.push(`Next sync: ${getNextSyncInfo()}`);
+
+    // Upload status line
     if (lastSyncTime) {
-      const timeAgo = Math.floor((Date.now() - lastSyncTime) / 1000);
-      if (timeAgo < 60) {
-        return "Synced just now";
-      } else if (timeAgo < 3600) {
-        return `Synced ${Math.floor(timeAgo / 60)}m ago`;
-      } else {
-        return `Synced ${Math.floor(timeAgo / 3600)}h ago`;
-      }
+      const uploadAgo = getTimeAgo(lastSyncTime);
+      lines.push(`Upload: ${uploadAgo}`);
+    } else {
+      lines.push(`Upload: Never`);
     }
-    return isLoggedIn ? "Sync to Cloud" : "Sign in & Sync";
+
+    return lines.join(" • ");
   };
 
   return (
@@ -304,9 +325,11 @@ export function Toolbar({
                   <DropdownMenuItem
                     key={note.id}
                     onClick={() => setActiveNoteId(note.id)}
+                    disabled={isFullSyncing}
                     className={cn(
                       "flex justify-between",
-                      note.id === activeNoteId && "bg-muted"
+                      note.id === activeNoteId && "bg-muted",
+                      isFullSyncing && "opacity-50 cursor-not-allowed"
                     )}
                   >
                     <span className="truncate pr-2">{note.name}</span>
@@ -314,11 +337,13 @@ export function Toolbar({
                       <AlertDialogTrigger
                         asChild
                         onClick={(e) => e.stopPropagation()}
+                        disabled={isFullSyncing}
                       >
                         <Button
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6 opacity-50 hover:opacity-100 flex-shrink-0"
+                          disabled={isFullSyncing}
                         >
                           <Trash2 className="w-4 h-4 text-destructive/70 hover:text-destructive" />
                         </Button>
@@ -351,7 +376,11 @@ export function Toolbar({
                 ))}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleCreateNewNote}>
+            <DropdownMenuItem
+              onClick={handleCreateNewNote}
+              disabled={isFullSyncing}
+              className={cn(isFullSyncing && "opacity-50 cursor-not-allowed")}
+            >
               <FilePlus2 className="w-4 h-4 mr-2" />
               <span>New Note</span>
             </DropdownMenuItem>
@@ -541,62 +570,9 @@ export function Toolbar({
             <TooltipContent>More</TooltipContent>
           </Tooltip>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={handleCloudSync}
-              disabled={isSyncing || !isOnline}
-              className={cn(
-                "flex items-center",
-                (isSyncing || !isOnline) && "opacity-50 cursor-not-allowed"
-              )}
-            >
-              {getSyncStatusIcon()}
-              <span className="ml-2">{getSyncStatusText()}</span>
-            </DropdownMenuItem>
-            {syncError && (
-              <DropdownMenuItem
-                onClick={handleCloudSync}
-                disabled={isSyncing || !isOnline}
-                className="flex items-center text-orange-600"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span className="ml-2">Retry Sync</span>
-              </DropdownMenuItem>
-            )}
+            {/* Sync status moved to navbar - keeping other functionality */}
             {isLoggedIn && (
               <>
-                <DropdownMenuItem onClick={handleSimpleTestSync}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  <span>Simple Test Sync</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleTestSync}>
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  <span>Test Sync with Sample Data</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleForceSync}>
-                  <Cloud className="w-4 h-4 mr-2" />
-                  <span>Force Sync Current Notes</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleStorageTest}>
-                  <Database className="w-4 h-4 mr-2" />
-                  <span>Test Storage System</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDebugDriveFiles}>
-                  <Search className="w-4 h-4 mr-2" />
-                  <span>Debug Drive Files</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleClearDriveCache}>
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  <span>Clear Drive Cache</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleTestDriveAPI}>
-                  <Search className="w-4 h-4 mr-2" />
-                  <span>Test Drive API</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleDebugNotesState}>
-                  <FileText className="w-4 h-4 mr-2" />
-                  <span>Debug Notes State</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="w-4 h-4 mr-2" />
                   <span>Sign Out</span>
