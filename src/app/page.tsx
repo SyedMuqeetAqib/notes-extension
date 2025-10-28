@@ -66,76 +66,106 @@ const LazyToolbar = dynamic(
 const extractTextFromBlocks = (blocks: any[]): string => {
   if (!blocks || !Array.isArray(blocks)) return "";
 
-  return blocks
-    .map((block: any) => {
-      // Handle blocks with content property (paragraph, heading, quote, list items, etc.)
-      if (block.content && Array.isArray(block.content)) {
-        return block.content
-          .map((item: any) => {
-            if (item.type === "text" && item.text) {
-              return item.text;
-            }
-            // Handle link content
-            if (item.type === "link" && item.content) {
-              return item.content
-                .map((linkItem: any) => linkItem.text || "")
-                .join("");
-            }
-            return "";
-          })
-          .join("");
-      }
+  try {
+    return blocks
+      .map((block: any) => {
+        try {
+          // Handle blocks with content property (paragraph, heading, quote, list items, etc.)
+          if (block.content && Array.isArray(block.content)) {
+            return block.content
+              .map((item: any) => {
+                if (item.type === "text" && item.text) {
+                  return item.text;
+                }
+                // Handle link content
+                if (
+                  item.type === "link" &&
+                  item.content &&
+                  Array.isArray(item.content)
+                ) {
+                  return item.content
+                    .map((linkItem: any) => linkItem.text || "")
+                    .join("");
+                }
+                return "";
+              })
+              .join("");
+          }
 
-      // Handle code blocks - they have content but it's structured differently
-      if (block.type === "codeBlock" && block.content) {
-        return block.content.map((item: any) => item.text || "").join("");
-      }
+          // Handle code blocks - they have content but it's structured differently
+          if (
+            block.type === "codeBlock" &&
+            block.content &&
+            Array.isArray(block.content)
+          ) {
+            return block.content.map((item: any) => item.text || "").join("");
+          }
 
-      // Handle table blocks - extract text from all cells
-      if (block.type === "table" && block.content) {
-        return block.content
-          .map((row: any) => {
-            if (row.type === "tableRow" && row.content) {
-              return row.content
-                .map((cell: any) => {
-                  if (cell.type === "tableCell" && cell.content) {
-                    return cell.content
-                      .map((cellItem: any) => {
-                        if (cellItem.type === "text" && cellItem.text) {
-                          return cellItem.text;
-                        }
-                        return "";
-                      })
-                      .join("");
-                  }
-                  return "";
-                })
-                .join(" ");
-            }
-            return "";
-          })
-          .join(" ");
-      }
+          // Handle table blocks - extract text from all cells
+          if (
+            block.type === "table" &&
+            block.content &&
+            Array.isArray(block.content)
+          ) {
+            return block.content
+              .map((row: any) => {
+                if (
+                  row.type === "tableRow" &&
+                  row.content &&
+                  Array.isArray(row.content)
+                ) {
+                  return row.content
+                    .map((cell: any) => {
+                      if (
+                        cell.type === "tableCell" &&
+                        cell.content &&
+                        Array.isArray(cell.content)
+                      ) {
+                        return cell.content
+                          .map((cellItem: any) => {
+                            if (cellItem.type === "text" && cellItem.text) {
+                              return cellItem.text;
+                            }
+                            return "";
+                          })
+                          .join("");
+                      }
+                      return "";
+                    })
+                    .join(" ");
+                }
+                return "";
+              })
+              .join(" ");
+          }
 
-      // Handle blocks without content (like images, files, etc.)
-      // For these, we might want to count them as having some text representation
-      if (block.type === "image" && block.props?.caption) {
-        return block.props.caption;
-      }
-      if (block.type === "file" && block.props?.name) {
-        return block.props.name;
-      }
-      if (block.type === "audio" && block.props?.name) {
-        return block.props.name;
-      }
-      if (block.type === "video" && block.props?.name) {
-        return block.props.name;
-      }
+          // Handle blocks without content (like images, files, etc.)
+          // For these, we might want to count them as having some text representation
+          if (block.type === "image" && block.props?.caption) {
+            return block.props.caption;
+          }
+          if (block.type === "file" && block.props?.name) {
+            return block.props.name;
+          }
+          if (block.type === "audio" && block.props?.name) {
+            return block.props.name;
+          }
+          if (block.type === "video" && block.props?.name) {
+            return block.props.name;
+          }
 
-      return "";
-    })
-    .join(" ")
-    .trim();
+          return "";
+        } catch (blockError) {
+          console.error("Error processing block:", blockError, block);
+          return "";
+        }
+      })
+      .join(" ")
+      .trim();
+  } catch (error) {
+    console.error("Error extracting text from blocks:", error);
+    return "";
+  }
 };
 
 // This function runs on the client and tries to get the initial state
@@ -848,6 +878,10 @@ export default function Home() {
       // Fallback to 0 if parsing fails
       setCharacterCount(0);
       console.error("❌ [Content Change] Failed to parse content:", error);
+      console.error(
+        "❌ [Content Change] Content that failed to parse:",
+        content.substring(0, 200) + "..."
+      );
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
@@ -883,11 +917,9 @@ export default function Home() {
         // Save to IndexedDB
         await IndexedDB.saveNote(updatedNote);
 
-        // Update local state
-        const updatedNotes = notes.map((n) =>
-          n.id === activeNoteId ? updatedNote : n
-        );
-        setNotes(updatedNotes);
+        // Don't update local state during auto-save to prevent editor re-render
+        // The notes state will be updated when switching notes or during manual operations
+        // This prevents cursor position from being affected by the debounced save
 
         // Save active note ID to localStorage for persistence
         localStorage.setItem("tabula-last-active-note", activeNoteId);

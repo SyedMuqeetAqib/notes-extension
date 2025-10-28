@@ -10,6 +10,7 @@ import "@blocknote/mantine/style.css";
 import { useCreateBlockNote } from "@blocknote/react";
 import { lightDefaultTheme, darkDefaultTheme } from "@blocknote/mantine";
 import type { Block } from "@blocknote/core";
+import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { ImageStorage } from "../../lib/image-storage";
 
 interface BlockNoteEditorProps {
@@ -32,7 +33,16 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
     // Track image URLs for cleanup
     const imageUrlMapRef = useRef<{ [hash: string]: string }>({});
 
+    // Create custom schema without video, file, and audio blocks
+    const { video, file, audio, ...remainingBlockSpecs } = defaultBlockSpecs;
+    const schema = BlockNoteSchema.create({
+      blockSpecs: {
+        ...remainingBlockSpecs,
+      },
+    });
+
     const editor = useCreateBlockNote({
+      schema, // Use the custom schema
       onUploadStart: (file: File) => {
         console.log(
           "🖼️ [BlockNote] Upload started:",
