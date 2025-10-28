@@ -10,6 +10,7 @@ import "@blocknote/mantine/style.css";
 import { useCreateBlockNote } from "@blocknote/react";
 import { lightDefaultTheme, darkDefaultTheme } from "@blocknote/mantine";
 import type { Block } from "@blocknote/core";
+import { ImageStorage } from "../../lib/image-storage";
 
 interface BlockNoteEditorProps {
   initialContent?: string;
@@ -28,24 +29,40 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
     { initialContent = "", onChange, autoFocus = true, theme = "light" },
     ref
   ) => {
+    // Track image URLs for cleanup
+    const imageUrlMapRef = useRef<{ [hash: string]: string }>({});
+
     const editor = useCreateBlockNote({
       onUploadStart: (file: File) => {
-        console.log("Upload started:", file);
+        console.log(
+          "🖼️ [BlockNote] Upload started:",
+          file.name,
+          file.type,
+          file.size
+        );
       },
       onUploadEnd: (file: File) => {
-        console.log("Upload ended:", file);
+        console.log("✅ [BlockNote] Upload ended:", file.name);
       },
-      initialContent: initialContent ? JSON.parse(initialContent) : undefined,
+      // Don't set initialContent here - we'll handle it in useEffect
+      initialContent: undefined,
       uploadFile: async (file: File) => {
-        // Option 1: object URL (fast, but must be revoked later if you care about memory leaks)
-        return URL.createObjectURL(file);
+        try {
+          console.log("🖼️ [BlockNote] Storing image in IndexedDB:", file.name);
 
-        // Option 2: base64 string (self-contained, but larger in memory)
-        // return new Promise<string>((resolve) => {
-        //   const reader = new FileReader();
-        //   reader.onloadend = () => resolve(reader.result as string);
-        //   reader.readAsDataURL(file);
-        // });
+          // Store image in IndexedDB and get hash reference
+          const imageHash = await ImageStorage.storeImageBlob(file);
+
+          // Return hash reference for BlockNote
+          const hashUrl = `indexeddb://${imageHash}`;
+          console.log("🔗 [BlockNote] Created hash reference:", hashUrl);
+
+          return hashUrl;
+        } catch (error) {
+          console.error("❌ [BlockNote] Failed to store image:", error);
+          // Fallback to Object URL if IndexedDB fails
+          return URL.createObjectURL(file);
+        }
       },
       // Enable paste handling for images
       pasteHandler: ({ event, editor, defaultPasteHandler }) => {
@@ -275,10 +292,27 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
     useEffect(() => {
       if (!editor || !onChange) return;
 
-      const handleChange = () => {
+      const handleChange = async () => {
         try {
           const blocks = editor.document;
-          const content = JSON.stringify(blocks);
+          let content = JSON.stringify(blocks);
+
+          // Convert Object URLs back to hash references before saving
+          console.log("🔄 [BlockNote] Processing content change:", {
+            contentLength: content.length,
+            hasObjectUrls: content.includes('"blob:'),
+            hasHashRefs: content.includes('"indexeddb://'),
+          });
+
+          const originalContent = content;
+          content = await ImageStorage.replaceUrlsWithRefs(content);
+
+          if (originalContent !== content) {
+            console.log(
+              "✅ [BlockNote] Converted Object URLs to hash references"
+            );
+          }
+
           onChange(content);
         } catch (error) {
           console.error("Failed to serialize editor content:", error);
@@ -294,42 +328,106 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
       };
     }, [editor, onChange]);
 
-    // Update editor content when initialContent changes
+    // Update editor content when initialContent changes (with image resolution)
     useEffect(() => {
       if (!editor || !initialContent) return;
 
-      try {
-        const blocks = JSON.parse(initialContent);
-        if (Array.isArray(blocks) && blocks.length > 0) {
-          // Only update if content is different to avoid infinite loops
-          const currentContent = JSON.stringify(editor.document);
-          if (currentContent !== initialContent) {
-            editor.replaceBlocks(editor.document, blocks);
+      const updateEditorContent = async () => {
+        try {
+          console.log("🔄 [BlockNote] Updating editor content:", {
+            contentLength: initialContent.length,
+            hasImages: initialContent.includes('"type":"image"'),
+          });
 
-            // Focus the editor after content update (when switching notes)
-            if (autoFocus && isInitialized.current) {
-              setTimeout(() => {
-                try {
-                  editor.focus();
-                  const firstBlock = editor.document[0];
-                  if (firstBlock) {
-                    editor.setTextCursorPosition(firstBlock, "start");
-                  }
-                } catch (error) {
-                  console.error(
-                    "Failed to focus editor after content update:",
-                    error
-                  );
-                }
-              }, 50);
+          // Wait a bit to ensure editor is fully initialized
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          // First, check if content has image references that need resolution
+          const imageRefs = ImageStorage.extractImageRefs(initialContent);
+
+          let contentToUse = initialContent;
+
+          if (imageRefs.length > 0) {
+            console.log("🖼️ [BlockNote] Resolving images:", imageRefs);
+
+            // Load and create Object URLs for all images
+            const urlMap: { [hash: string]: string } = {};
+            for (const hash of imageRefs) {
+              try {
+                const url = await ImageStorage.getImageUrl(hash);
+                urlMap[hash] = url;
+                console.log(`✅ [BlockNote] Resolved image ${hash} -> ${url}`);
+              } catch (error) {
+                console.error(
+                  `❌ [BlockNote] Failed to resolve image ${hash}:`,
+                  error
+                );
+              }
             }
+
+            // Store for cleanup
+            imageUrlMapRef.current = urlMap;
+
+            // Replace hash references with Object URLs in content
+            contentToUse = await ImageStorage.replaceRefsWithUrls(
+              initialContent
+            );
+            console.log("✅ [BlockNote] Images resolved, content updated");
           }
-          isInitialized.current = true;
+
+          // Parse and update editor content
+          const blocks = JSON.parse(contentToUse);
+          if (Array.isArray(blocks) && blocks.length > 0) {
+            // Only update if content is different to avoid infinite loops
+            const currentContent = JSON.stringify(editor.document);
+            if (currentContent !== contentToUse) {
+              console.log("🔄 [BlockNote] Replacing editor blocks...");
+              editor.replaceBlocks(editor.document, blocks);
+              console.log("✅ [BlockNote] Editor content updated");
+
+              // Focus the editor after content update (when switching notes)
+              if (autoFocus && isInitialized.current) {
+                setTimeout(() => {
+                  try {
+                    editor.focus();
+                    const firstBlock = editor.document[0];
+                    if (firstBlock) {
+                      editor.setTextCursorPosition(firstBlock, "start");
+                    }
+                  } catch (error) {
+                    console.error(
+                      "Failed to focus editor after content update:",
+                      error
+                    );
+                  }
+                }, 50);
+              }
+            } else {
+              console.log("ℹ️ [BlockNote] Content unchanged, skipping update");
+            }
+            isInitialized.current = true;
+          }
+        } catch (error) {
+          console.error(
+            "❌ [BlockNote] Failed to update editor content:",
+            error
+          );
         }
-      } catch (error) {
-        console.error("Failed to parse initial content:", error);
-      }
+      };
+
+      updateEditorContent();
     }, [editor, initialContent, autoFocus]);
+
+    // Cleanup image URLs on unmount
+    useEffect(() => {
+      return () => {
+        // Revoke all Object URLs when component unmounts
+        const urls = Object.values(imageUrlMapRef.current);
+        ImageStorage.revokeImageUrls(urls);
+        imageUrlMapRef.current = {};
+        console.log("🧹 [BlockNote] Cleaned up image URLs");
+      };
+    }, []);
 
     // Create a transparent theme based on the current theme
     const baseTheme = theme === "dark" ? darkDefaultTheme : lightDefaultTheme;

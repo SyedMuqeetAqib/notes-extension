@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev:extension": "node initial-extension-build.js && node watch-and-build.js",
+    "watch:build": "node watch-and-build.js",
+    "build:dev": "bash build-extension-dev.sh"
   },
   "dependencies": {
     "@blocknote/core": "^0.39.1",
@@ -39,10 +42,12 @@
     "@tiptap/extensions": "^3.4.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "concurrently": "^9.2.1",
     "dotenv": "^16.5.0",
     "genkit": "^1.1.0",
     "lucide-react": "^0.475.0",
     "next": "15.3.3",
+    "nodemon": "^3.1.10",
     "patch-package": "^8.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

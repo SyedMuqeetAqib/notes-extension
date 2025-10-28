@@ -7,16 +7,31 @@
     "storage",
     "identity"
   ],
+  "host_permissions": [
+    "https://www.googleapis.com/*",
+    "https://accounts.google.com/*"
+  ],
   "chrome_url_overrides": {
     "newtab": "index.html"
+  },
+  "background": {
+    "service_worker": "reload-extension.js"
   },
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
+  "oauth2": {
+    "client_id": "284239172338-8h05pivsirhrc2joc1d21vqgurvpeg63.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile"
+    ]
+  },
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline';"
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://www.googleapis.com https://accounts.google.com https://apis.google.com;"
   },
   "web_accessible_resources": [
     {

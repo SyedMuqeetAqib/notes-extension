@@ -23,13 +23,30 @@ import {
   User,
   Upload,
   AlertCircle,
+  CheckCircle,
 } from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
 import type { Note } from "@/lib/google-drive";
 import { StorageTest } from "@/lib/storage-test";
+import { IndexedDB, type Note as IndexedDBNote } from "@/lib/indexeddb";
+import { ImageStorage } from "@/lib/image-storage";
+import {
+  ErrorHandler,
+  handleErrorWithToast,
+  QuotaManager,
+} from "@/lib/error-handling";
 import BlockNoteEditor, {
   type BlockNoteEditorRef,
 } from "./BlockNoteEditor/blocknote";
+
+// Sync progress types
+type SyncStatus = "syncing" | "complete" | "error";
+
+interface SyncProgressItem {
+  noteId: string;
+  noteName: string;
+  status: SyncStatus;
+}
 
 const LazyImageDialog = dynamic(() => import("@/components/image-dialog"));
 const LazyStatusIndicator = dynamic(() =>
@@ -134,360 +151,28 @@ const getInitialState = () => {
   }
   try {
     const theme = localStorage.getItem("tabula-theme") || "light";
-    const savedNotes = localStorage.getItem("tabula-notes");
-    let notes: Note[] = savedNotes ? JSON.parse(savedNotes) : [];
 
-    let activeNoteId = localStorage.getItem("tabula-last-active-note");
-    let activeNote = notes.find((n) => n.id === activeNoteId);
-
-    // If no active note, or if index is empty, create a new one
-    if (!activeNoteId || notes.length === 0 || !activeNote) {
-      const newNote: Note = {
-        id: `note-${Date.now()}`,
-        name: "My First Note",
-        content: JSON.stringify([
-          {
-            id: "1",
-            type: "paragraph",
-            props: {},
-            content: [
-              { type: "text", text: "🎉 Welcome to ", styles: {} },
-              { type: "text", text: "Tabula", styles: { bold: true } },
-              { type: "text", text: "! 🎉", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "2",
-            type: "paragraph",
-            props: {},
-            content: [
-              {
-                type: "text",
-                text: "Your personal note-taking companion that makes writing a joy. Let's get you started with some helpful tips! ✨",
-                styles: {},
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "3",
-            type: "heading",
-            props: { level: 2 },
-            content: [
-              { type: "text", text: "⌨️ Quick Keyboard Shortcuts", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "4",
-            type: "paragraph",
-            props: {},
-            content: [
-              {
-                type: "text",
-                text: "Master these shortcuts to write faster and more efficiently:",
-                styles: { italic: true },
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "5",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "💪 ", styles: {} },
-              { type: "text", text: "Bold", styles: { bold: true } },
-              { type: "text", text: " text: ", styles: {} },
-              { type: "text", text: "Ctrl/Cmd + B", styles: { code: true } },
-            ],
-            children: [],
-          },
-          {
-            id: "6",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "✨ ", styles: {} },
-              { type: "text", text: "Italic", styles: { italic: true } },
-              { type: "text", text: " text: ", styles: {} },
-              { type: "text", text: "Ctrl/Cmd + I", styles: { code: true } },
-            ],
-            children: [],
-          },
-          {
-            id: "7",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "❌ ", styles: {} },
-              { type: "text", text: "Strikethrough", styles: { strike: true } },
-              { type: "text", text: " text: ", styles: {} },
-              {
-                type: "text",
-                text: "Ctrl/Cmd + Shift + S",
-                styles: { code: true },
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "8",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "📝 ", styles: {} },
-              { type: "text", text: "Headings", styles: {} },
-              { type: "text", text: " (H1, H2, H3): ", styles: {} },
-              {
-                type: "text",
-                text: "Ctrl/Cmd + Shift + 1/2/3",
-                styles: { code: true },
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "9",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "📋 ", styles: {} },
-              { type: "text", text: "Lists", styles: {} },
-              {
-                type: "text",
-                text: " (bullet • or numbered 1.): ",
-                styles: {},
-              },
-              {
-                type: "text",
-                text: "Ctrl/Cmd + Shift + 8/7",
-                styles: { code: true },
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "10",
-            type: "heading",
-            props: { level: 2 },
-            content: [
-              { type: "text", text: "🎨 See It In Action", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "11",
-            type: "paragraph",
-            props: {},
-            content: [
-              {
-                type: "text",
-                text: "Here are some examples of what you can create:",
-                styles: { italic: true },
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "12",
-            type: "heading",
-            props: { level: 1 },
-            content: [
-              { type: "text", text: "📚 Main Topic (Heading 1)", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "13",
-            type: "heading",
-            props: { level: 2 },
-            content: [
-              { type: "text", text: "📖 Subsection (Heading 2)", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "14",
-            type: "heading",
-            props: { level: 3 },
-            content: [
-              { type: "text", text: "📝 Details (Heading 3)", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "15",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "✨ ", styles: {} },
-              { type: "text", text: "Mix and match formatting", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "16",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "💪 ", styles: {} },
-              { type: "text", text: "Bold", styles: { bold: true } },
-              { type: "text", text: " and ", styles: {} },
-              { type: "text", text: "italic", styles: { italic: true } },
-              { type: "text", text: " text together", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "17",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "❌ ", styles: {} },
-              { type: "text", text: "Strikethrough", styles: { strike: true } },
-              { type: "text", text: " for corrections", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "18",
-            type: "numberedListItem",
-            props: {},
-            content: [
-              { type: "text", text: "1️⃣ ", styles: {} },
-              { type: "text", text: "Organize your thoughts", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "19",
-            type: "numberedListItem",
-            props: {},
-            content: [
-              { type: "text", text: "2️⃣ ", styles: {} },
-              { type: "text", text: "Create structured lists", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "20",
-            type: "heading",
-            props: { level: 2 },
-            content: [{ type: "text", text: "🚀 Ready to Start?", styles: {} }],
-            children: [],
-          },
-          {
-            id: "21",
-            type: "paragraph",
-            props: {},
-            content: [
-              {
-                type: "text",
-                text: "You're all set! Start typing anywhere to create your own notes. Here are some cool features to explore:",
-                styles: {},
-              },
-            ],
-            children: [],
-          },
-          {
-            id: "22",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "🖼️ ", styles: {} },
-              { type: "text", text: "Drag & drop images", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "23",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "☁️ ", styles: {} },
-              { type: "text", text: "Google Drive sync", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "24",
-            type: "bulletListItem",
-            props: {},
-            content: [
-              { type: "text", text: "🌙 ", styles: {} },
-              { type: "text", text: "Dark/Light theme toggle", styles: {} },
-            ],
-            children: [],
-          },
-          {
-            id: "25",
-            type: "paragraph",
-            props: {},
-            content: [
-              {
-                type: "text",
-                text: "Happy note-taking! 🎉",
-                styles: { bold: true, italic: true },
-              },
-            ],
-            children: [],
-          },
-        ]),
-        createdAt: Date.now(),
-        lastUpdatedAt: Date.now(),
-      };
-      notes = [newNote, ...notes.filter((n) => n.id !== newNote.id)];
-      activeNoteId = newNote.id;
-      activeNote = newNote;
-      localStorage.setItem("tabula-notes", JSON.stringify(notes));
-      localStorage.setItem("tabula-last-active-note", activeNoteId);
-    }
-
-    // Calculate character count from BlockNote content
-    let characterCount = 0;
-    try {
-      const blocks = JSON.parse(activeNote.content);
-      const textContent = extractTextFromBlocks(blocks);
-      characterCount = textContent.length;
-    } catch (error) {
-      // Fallback to HTML parsing for legacy content
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = activeNote.content;
-      characterCount = tempDiv.innerText.length;
-    }
-
-    return { activeNoteId, notes, theme, characterCount };
-  } catch (e) {
-    console.error("Failed to initialize state from localStorage", e);
-    // Return a default safe state
-    const fallbackNote: Note = {
-      id: "fallback",
-      name: "Error Note",
-      content: JSON.stringify([
-        {
-          id: "1",
-          type: "paragraph",
-          props: {},
-          content: [{ type: "text", text: "Error loading note.", styles: {} }],
-          children: [],
-        },
-      ]),
-      createdAt: Date.now(),
-      lastUpdatedAt: Date.now(),
-    };
+    // For now, return empty state - we'll load from IndexedDB in useEffect
+    // This prevents hydration mismatches
     return {
-      activeNoteId: "fallback",
-      notes: [fallbackNote],
+      activeNoteId: null,
+      notes: [],
+      theme,
+      characterCount: 0,
+    };
+  } catch (e) {
+    console.error("Error loading initial state:", e);
+    return {
+      activeNoteId: null,
+      notes: [],
       theme: "light",
-      characterCount: "Error loading note.".length,
+      characterCount: 0,
     };
   }
 };
 
 const GOOGLE_CLIENT_ID =
-  "284239172338-oiblqhmj5e48ippdo9bvet6e8ps2bm8r.apps.googleusercontent.com";
+  "284239172338-8h05pivsirhrc2joc1d21vqgurvpeg63.apps.googleusercontent.com";
 
 export default function Home() {
   const [isClient, setIsClient] = React.useState(false);
@@ -537,6 +222,13 @@ export default function Home() {
   const [isOnline, setIsOnline] = React.useState(true);
   const [pendingSyncs, setPendingSyncs] = React.useState<number>(0);
   const [retryCount, setRetryCount] = React.useState(0);
+  const [syncProgress, setSyncProgress] = React.useState<SyncProgressItem[]>(
+    []
+  );
+
+  // IndexedDB initialization state
+  const [isIndexedDBReady, setIsIndexedDBReady] = React.useState(false);
+  const [isLoadingNotes, setIsLoadingNotes] = React.useState(true);
   const maxRetries = 3;
 
   // Separate handler for sign-in to maintain user gesture chain
@@ -607,6 +299,17 @@ export default function Home() {
         timestamp: new Date().toISOString(),
       });
 
+      // Debug: Check authentication status
+      const token = window.gapi?.client?.getToken?.() || window._gapiToken;
+      console.log("🔍 [Sync] Authentication debug:", {
+        hasGapi: !!window.gapi,
+        hasClient: !!window.gapi?.client,
+        hasToken: !!token,
+        tokenType: typeof token,
+        isGapiLoaded,
+        isLoggedIn,
+      });
+
       if (!isGapiLoaded) {
         console.log("❌ [Sync] Google API not loaded yet");
         if (showToast) {
@@ -654,10 +357,22 @@ export default function Home() {
       setIsSyncing(true);
       setSyncError(null);
 
+      // CRITICAL: Save current editor content before any sync operation
+      console.log("💾 [Sync] Saving current editor content before sync...");
+      const notesWithCurrentContent = saveCurrentEditorContent();
+
       // Set full sync state for UI lock (only for full sync, not upload-only)
       if (!uploadOnly) {
         setIsFullSyncing(true);
         console.log("🔒 [Sync] UI locked for full sync operation");
+
+        // Initialize progress tracking for full sync
+        const initialProgress = notesWithCurrentContent.map((note) => ({
+          noteId: note.id,
+          noteName: note.name,
+          status: "syncing" as SyncStatus,
+        }));
+        setSyncProgress(initialProgress);
       }
 
       try {
@@ -668,10 +383,6 @@ export default function Home() {
               : "Syncing notes with Google Drive...",
           });
         }
-
-        // CRITICAL: Save current editor content before any sync operation
-        console.log("💾 [Sync] Saving current editor content before sync...");
-        const notesWithCurrentContent = saveCurrentEditorContent();
 
         if (uploadOnly) {
           // Upload-only sync: Just upload current content, no fetch/merge
@@ -688,173 +399,81 @@ export default function Home() {
             });
           }
         } else {
-          // Full sync: Fetch, merge, and upload
-          console.log("📥 [Sync] Step 1: Fetching notes from Drive...");
-          // 1. Fetch notes from Drive
-          const cloudNotes = await GoogleDrive.loadNotesFromDrive();
-          console.log("📥 [Sync] Cloud notes fetched:", {
-            cloudNotesCount: cloudNotes ? cloudNotes.length : 0,
-            hasCloudNotes: !!cloudNotes,
-            cloudNotes: cloudNotes
-              ? cloudNotes.map((n) => ({
-                  id: n.id,
-                  name: n.name,
-                  lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
-                }))
-              : [],
-          });
+          // Full sync: Use simple sync for now
+          console.log("🔄 [Sync] Starting simple sync...");
 
-          console.log("🔄 [Sync] Step 2: Merging local and cloud notes...");
-          // 2. Merge local and cloud notes with enhanced conflict resolution
-          // Use notes with current content instead of localStorage to get the latest data
-          const localNotes = notesWithCurrentContent;
-          console.log(
-            "📋 [Sync] Local notes loaded from state with current content:",
-            {
-              localNotesCount: localNotes.length,
-              notesFromState: true,
-              hasCurrentContent: true,
-              localNotes: localNotes.map((n) => ({
-                id: n.id,
-                name: n.name,
-                lastUpdatedAt: new Date(n.lastUpdatedAt).toISOString(),
-              })),
-            }
-          );
-
-          const combinedNotes: { [key: string]: Note } = {};
-
-          // Add all local notes to the map
-          for (const note of localNotes) {
-            combinedNotes[note.id] = note;
-          }
-          console.log(
-            "📋 [Sync] Local notes added to merge map:",
-            Object.keys(combinedNotes).length
-          );
-
-          // Add/update with cloud notes using intelligent conflict resolution
-          if (cloudNotes) {
-            console.log("🔄 [Sync] Processing cloud notes for merge...");
-            let conflictsResolved = 0;
-            let newNotesAdded = 0;
-
-            for (const cloudNote of cloudNotes) {
-              const localNote = combinedNotes[cloudNote.id];
-
-              if (localNote) {
-                // Note exists in both - resolve conflict
-                const timeDiff = Math.abs(
-                  cloudNote.lastUpdatedAt - localNote.lastUpdatedAt
+          try {
+            // Create progress callback for sync
+            const onProgress = (
+              noteId: string,
+              noteName: string,
+              status: "syncing" | "complete" | "error"
+            ) => {
+              setSyncProgress((prev) => {
+                const existingIndex = prev.findIndex(
+                  (item) => item.noteId === noteId
                 );
-
-                console.log(
-                  `🔍 [Sync] Conflict resolution for note "${localNote.name}":`,
-                  {
-                    localLastUpdated: new Date(
-                      localNote.lastUpdatedAt
-                    ).toISOString(),
-                    cloudLastUpdated: new Date(
-                      cloudNote.lastUpdatedAt
-                    ).toISOString(),
-                    timeDiff: timeDiff,
-                    localName: localNote.name,
-                    cloudName: cloudNote.name,
-                    namesMatch: localNote.name === cloudNote.name,
-                  }
-                );
-
-                if (timeDiff < 5000) {
-                  // Less than 5 seconds difference - likely same edit
-                  // Keep the one with more recent timestamp
-                  if (cloudNote.lastUpdatedAt > localNote.lastUpdatedAt) {
-                    combinedNotes[cloudNote.id] = cloudNote;
-                    console.log(
-                      `🔄 [Sync] Conflict resolved for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
-                    );
-                  } else {
-                    console.log(
-                      `🔄 [Sync] Conflict resolved for "${localNote.name}" - using local version (time diff: ${timeDiff}ms)`
-                    );
-                  }
-                  conflictsResolved++;
+                if (existingIndex >= 0) {
+                  // Update existing note
+                  return prev.map((item, index) =>
+                    index === existingIndex
+                      ? { ...item, noteName, status: status as SyncStatus }
+                      : item
+                  );
                 } else {
-                  // Significant time difference - prioritize local changes
-                  const localContent = localNote.content;
-                  const cloudContent = cloudNote.content;
-
-                  // Always prioritize local changes if they're more recent
-                  if (localNote.lastUpdatedAt > cloudNote.lastUpdatedAt) {
-                    console.log(
-                      `✅ [Sync] Local changes to "${localNote.name}" are newer - keeping local version (time diff: ${timeDiff}ms)`
-                    );
-                    // Keep local version (already in combinedNotes)
-                  } else {
-                    // Cloud is newer, but check if it's a significant change
-                    if (localContent === cloudContent) {
-                      // Same content, use cloud version
-                      combinedNotes[cloudNote.id] = cloudNote;
-                      console.log(
-                        `🔄 [Sync] Same content for "${cloudNote.name}" - using cloud version (time diff: ${timeDiff}ms)`
-                      );
-                    } else {
-                      // Different content - use cloud version but warn user
-                      combinedNotes[cloudNote.id] = cloudNote;
-                      console.log(
-                        `⚠️ [Sync] Note "${cloudNote.name}" was updated on another device (time diff: ${timeDiff}ms)`
-                      );
-                    }
-                  }
-                  conflictsResolved++;
+                  // Add new note (from Google Drive)
+                  return [
+                    ...prev,
+                    { noteId, noteName, status: status as SyncStatus },
+                  ];
                 }
-              } else {
-                // Note doesn't exist locally, add it
-                combinedNotes[cloudNote.id] = cloudNote;
-                newNotesAdded++;
-                console.log(
-                  `➕ [Sync] New note added from cloud: "${cloudNote.name}"`
-                );
-              }
+              });
+            };
+
+            const syncResult = await GoogleDrive.simpleSync(onProgress);
+
+            console.log("✅ [Sync] Full sync completed:", {
+              notesCount: syncResult.notes.length,
+            });
+
+            // Update local state with synced notes
+            setNotes(syncResult.notes);
+
+            // Set active note (try to restore from localStorage first)
+            const lastActiveNoteId = localStorage.getItem(
+              "tabula-last-active-note"
+            );
+            const activeNote =
+              syncResult.notes.find((n) => n.id === lastActiveNoteId) ||
+              syncResult.notes[0];
+            if (activeNote) {
+              setActiveNoteId(activeNote.id);
+              localStorage.setItem("tabula-last-active-note", activeNote.id);
             }
 
-            console.log("🔄 [Sync] Merge summary:", {
-              conflictsResolved,
-              newNotesAdded,
-              totalCloudNotes: cloudNotes.length,
-            });
+            // Update last full sync time
+            const fullSyncTime = Date.now();
+            setLastFullSyncTime(fullSyncTime);
+            localStorage.setItem(
+              "tabula-last-full-sync",
+              fullSyncTime.toString()
+            );
+
+            // Auto-close modal after 2 seconds and show success toast
+            setTimeout(() => {
+              setIsFullSyncing(false);
+              setSyncProgress([]);
+              if (showToast && !isAutoSync) {
+                toast({
+                  title: "Sync successful!",
+                  description: `Synced ${syncResult.notes.length} notes with Google Drive.`,
+                });
+              }
+            }, 2000);
+          } catch (error) {
+            const errorInfo = handleErrorWithToast(error, "full sync", toast);
+            throw error; // Re-throw to be caught by outer try-catch
           }
-
-          const mergedNotes = Object.values(combinedNotes);
-          console.log(
-            "📊 [Sync] Final merged notes count:",
-            mergedNotes.length
-          );
-
-          console.log("💾 [Sync] Step 3: Saving merged notes back to Drive...");
-          // 3. Save merged notes back to Drive
-          await GoogleDrive.saveNotesToDrive(mergedNotes);
-          console.log("✅ [Sync] Notes saved to Drive successfully");
-
-          console.log("🔄 [Sync] Step 4: Updating local state...");
-          // 4. Update local state with merged notes
-          setNotes(mergedNotes);
-          localStorage.setItem("tabula-notes", JSON.stringify(mergedNotes));
-          console.log("✅ [Sync] Local state updated");
-
-          if (showToast && !isAutoSync) {
-            toast({
-              title: "Sync successful!",
-              description: "Your notes are up to date.",
-            });
-          }
-
-          // Update last full sync time
-          const fullSyncTime = Date.now();
-          setLastFullSyncTime(fullSyncTime);
-          localStorage.setItem(
-            "tabula-last-full-sync",
-            fullSyncTime.toString()
-          );
         }
 
         // Update sync status
@@ -909,6 +528,7 @@ export default function Home() {
       } finally {
         setIsSyncing(false);
         setIsFullSyncing(false); // Always release UI lock
+        setSyncProgress([]); // Clear progress on completion or error
         console.log("🔓 [Sync] Sync lock released");
       }
     },
@@ -938,6 +558,19 @@ export default function Home() {
     if (storedLastFullSync) {
       setLastFullSyncTime(parseInt(storedLastFullSync, 10));
     }
+
+    // Expose debug functions to window for console access
+    (window as any).debugGoogleDrive = {
+      testAPI: GoogleDrive.debugTestDriveAPI,
+      basicAPI: GoogleDrive.debugBasicAPI,
+      listFiles: GoogleDrive.debugListDriveFiles,
+      clearCache: GoogleDrive.clearDriveCache,
+      createTestNote: GoogleDrive.createTestNote,
+      createSimpleTestNote: GoogleDrive.createSimpleTestNote,
+      createTestNoteWithContent: GoogleDrive.createTestNoteWithContent,
+      uploadFlow: GoogleDrive.debugUploadFlow,
+      simpleSync: GoogleDrive.simpleSync,
+    };
 
     // Initialize Google Drive API
     const initDrive = async () => {
@@ -986,6 +619,130 @@ export default function Home() {
     };
     initDrive();
   }, [toast]);
+
+  // Initialize IndexedDB and load notes
+  React.useEffect(() => {
+    if (!isClient) return;
+
+    const initIndexedDB = async () => {
+      try {
+        console.log("🗄️ [IndexedDB] Initializing database...");
+        await IndexedDB.initDB();
+        setIsIndexedDBReady(true);
+        console.log("✅ [IndexedDB] Database initialized");
+
+        // Load notes from IndexedDB
+        const loadedNotes = await IndexedDB.getAllNotes();
+        console.log("📚 [IndexedDB] Loaded notes:", loadedNotes.length);
+
+        if (loadedNotes.length === 0) {
+          // Create welcome note if no notes exist
+          const welcomeNote: IndexedDBNote = {
+            id: `note-${Date.now()}`,
+            name: "My First Note",
+            content: JSON.stringify([
+              {
+                id: "1",
+                type: "paragraph",
+                props: {},
+                content: [
+                  { type: "text", text: "🎉 Welcome to ", styles: {} },
+                  { type: "text", text: "Tabula", styles: { bold: true } },
+                  { type: "text", text: "! 🎉", styles: {} },
+                ],
+                children: [],
+              },
+              {
+                id: "2",
+                type: "paragraph",
+                props: {},
+                content: [
+                  {
+                    type: "text",
+                    text: "Your personal note-taking companion with IndexedDB storage and image support! ✨",
+                    styles: {},
+                  },
+                ],
+                children: [],
+              },
+              {
+                id: "3",
+                type: "heading",
+                props: { level: 2 },
+                content: [
+                  { type: "text", text: "🖼️ Image Support", styles: {} },
+                ],
+                children: [],
+              },
+              {
+                id: "4",
+                type: "paragraph",
+                props: {},
+                content: [
+                  {
+                    type: "text",
+                    text: "You can now paste images directly into your notes! Images are stored locally in IndexedDB and synced to Google Drive when you sync.",
+                    styles: {},
+                  },
+                ],
+                children: [],
+              },
+              {
+                id: "5",
+                type: "paragraph",
+                props: {},
+                content: [
+                  {
+                    type: "text",
+                    text: "Try pasting an image (Ctrl/Cmd + V) or dragging and dropping one into this note!",
+                    styles: { italic: true },
+                  },
+                ],
+                children: [],
+              },
+            ]),
+            createdAt: Date.now(),
+            lastUpdatedAt: Date.now(),
+          };
+
+          await IndexedDB.saveNote(welcomeNote);
+          setNotes([welcomeNote]);
+          setActiveNoteId(welcomeNote.id);
+          console.log("✅ [IndexedDB] Created welcome note");
+        } else {
+          // Load existing notes
+          setNotes(loadedNotes);
+
+          // Set active note (try to restore from localStorage first)
+          const lastActiveNoteId = localStorage.getItem(
+            "tabula-last-active-note"
+          );
+          const activeNote =
+            loadedNotes.find((n) => n.id === lastActiveNoteId) ||
+            loadedNotes[0];
+          setActiveNoteId(activeNote.id);
+
+          console.log(
+            "✅ [IndexedDB] Restored notes and active note:",
+            activeNote.id
+          );
+        }
+
+        setIsLoadingNotes(false);
+      } catch (error) {
+        console.error("❌ [IndexedDB] Failed to initialize:", error);
+        setIsLoadingNotes(false);
+        toast({
+          title: "Storage Error",
+          description:
+            "Failed to initialize local storage. Some features may not work.",
+          variant: "destructive",
+        });
+      }
+    };
+
+    initIndexedDB();
+  }, [isClient, toast]);
 
   // Removed: Initial sync on page load
   // Users will manually sync when they want to fetch updates from Drive
@@ -1093,36 +850,57 @@ export default function Home() {
       console.error("❌ [Content Change] Failed to parse content:", error);
     }
 
-    saveTimeoutRef.current = setTimeout(() => {
-      if (!activeNoteId) {
-        console.log("⚠️ [Content Change] No active note ID, skipping save");
+    saveTimeoutRef.current = setTimeout(async () => {
+      if (!activeNoteId || !isIndexedDBReady) {
+        console.log(
+          "⚠️ [Content Change] No active note ID or IndexedDB not ready, skipping save"
+        );
         return;
       }
       try {
-        const updatedNotes = notes.map((n) =>
-          n.id === activeNoteId
-            ? { ...n, content: content, lastUpdatedAt: Date.now() }
-            : n
-        );
+        // Find the current note
+        const currentNote = notes.find((n) => n.id === activeNoteId);
+        if (!currentNote) {
+          console.log(
+            "⚠️ [Content Change] Current note not found, skipping save"
+          );
+          return;
+        }
 
-        console.log("💾 [Content Change] Updating notes:", {
+        // Update the note with new content
+        const updatedNote: IndexedDBNote = {
+          ...currentNote,
+          content: content,
+          lastUpdatedAt: Date.now(),
+        };
+
+        console.log("💾 [Content Change] Updating note in IndexedDB:", {
           activeNoteId,
           contentLength: content.length,
-          notesCount: updatedNotes.length,
-          updatedNote: updatedNotes.find((n) => n.id === activeNoteId),
           contentPreview: content.substring(0, 200) + "...",
         });
 
-        setNotes(updatedNotes);
-        localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
-        console.log(
-          "✅ [Content Change] Notes saved to localStorage successfully"
+        // Save to IndexedDB
+        await IndexedDB.saveNote(updatedNote);
+
+        // Update local state
+        const updatedNotes = notes.map((n) =>
+          n.id === activeNoteId ? updatedNote : n
         );
+        setNotes(updatedNotes);
+
+        // Save active note ID to localStorage for persistence
+        localStorage.setItem("tabula-last-active-note", activeNoteId);
+
+        console.log("✅ [Content Change] Note saved to IndexedDB successfully");
 
         // Note: Auto-sync on content change has been removed
         // Users should manually sync or wait for daily sync reminder
       } catch (error) {
-        console.error("Failed to save note to local storage", error);
+        console.error(
+          "❌ [Content Change] Failed to save note to IndexedDB:",
+          error
+        );
         toast({
           variant: "destructive",
           title: "Save Failed",
@@ -1179,367 +957,283 @@ export default function Home() {
     }
   }, [toast, activeNoteId, notes]);
 
-  const handleCreateNewNote = () => {
-    const newNote: Note = {
-      id: `note-${Date.now()}`,
-      name: "Untitled Note",
-      content: JSON.stringify([
-        {
-          id: "1",
-          type: "paragraph",
-          props: {},
-          content: [
-            { type: "text", text: "🎉 Welcome to ", styles: {} },
-            { type: "text", text: "Tabula", styles: { bold: true } },
-            { type: "text", text: "! 🎉", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "2",
-          type: "paragraph",
-          props: {},
-          content: [
-            {
-              type: "text",
-              text: "Your personal note-taking companion that makes writing a joy. Let's get you started with some helpful tips! ✨",
-              styles: {},
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "3",
-          type: "heading",
-          props: { level: 2 },
-          content: [
-            { type: "text", text: "⌨️ Quick Keyboard Shortcuts", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "4",
-          type: "paragraph",
-          props: {},
-          content: [
-            {
-              type: "text",
-              text: "Master these shortcuts to write faster and more efficiently:",
-              styles: { italic: true },
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "5",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "💪 ", styles: {} },
-            { type: "text", text: "Bold", styles: { bold: true } },
-            { type: "text", text: " text: ", styles: {} },
-            { type: "text", text: "Ctrl/Cmd + B", styles: { code: true } },
-          ],
-          children: [],
-        },
-        {
-          id: "6",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "✨ ", styles: {} },
-            { type: "text", text: "Italic", styles: { italic: true } },
-            { type: "text", text: " text: ", styles: {} },
-            { type: "text", text: "Ctrl/Cmd + I", styles: { code: true } },
-          ],
-          children: [],
-        },
-        {
-          id: "7",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "❌ ", styles: {} },
-            { type: "text", text: "Strikethrough", styles: { strike: true } },
-            { type: "text", text: " text: ", styles: {} },
-            {
-              type: "text",
-              text: "Ctrl/Cmd + Shift + S",
-              styles: { code: true },
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "8",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "📝 ", styles: {} },
-            { type: "text", text: "Headings", styles: {} },
-            { type: "text", text: " (H1, H2, H3): ", styles: {} },
-            {
-              type: "text",
-              text: "Ctrl/Cmd + Shift + 1/2/3",
-              styles: { code: true },
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "9",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "📋 ", styles: {} },
-            { type: "text", text: "Lists", styles: {} },
-            { type: "text", text: " (bullet • or numbered 1.): ", styles: {} },
-            {
-              type: "text",
-              text: "Ctrl/Cmd + Shift + 8/7",
-              styles: { code: true },
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "10",
-          type: "heading",
-          props: { level: 2 },
-          content: [{ type: "text", text: "🎨 See It In Action", styles: {} }],
-          children: [],
-        },
-        {
-          id: "11",
-          type: "paragraph",
-          props: {},
-          content: [
-            {
-              type: "text",
-              text: "Here are some examples of what you can create:",
-              styles: { italic: true },
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "12",
-          type: "heading",
-          props: { level: 1 },
-          content: [
-            { type: "text", text: "📚 Main Topic (Heading 1)", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "13",
-          type: "heading",
-          props: { level: 2 },
-          content: [
-            { type: "text", text: "📖 Subsection (Heading 2)", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "14",
-          type: "heading",
-          props: { level: 3 },
-          content: [
-            { type: "text", text: "📝 Details (Heading 3)", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "15",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "✨ ", styles: {} },
-            { type: "text", text: "Mix and match formatting", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "16",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "💪 ", styles: {} },
-            { type: "text", text: "Bold", styles: { bold: true } },
-            { type: "text", text: " and ", styles: {} },
-            { type: "text", text: "italic", styles: { italic: true } },
-            { type: "text", text: " text together", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "17",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "❌ ", styles: {} },
-            { type: "text", text: "Strikethrough", styles: { strike: true } },
-            { type: "text", text: " for corrections", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "18",
-          type: "numberedListItem",
-          props: {},
-          content: [
-            { type: "text", text: "1️⃣ ", styles: {} },
-            { type: "text", text: "Organize your thoughts", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "19",
-          type: "numberedListItem",
-          props: {},
-          content: [
-            { type: "text", text: "2️⃣ ", styles: {} },
-            { type: "text", text: "Create structured lists", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "20",
-          type: "heading",
-          props: { level: 2 },
-          content: [{ type: "text", text: "🚀 Ready to Start?", styles: {} }],
-          children: [],
-        },
-        {
-          id: "21",
-          type: "paragraph",
-          props: {},
-          content: [
-            {
-              type: "text",
-              text: "You're all set! Start typing anywhere to create your own notes. Here are some cool features to explore:",
-              styles: {},
-            },
-          ],
-          children: [],
-        },
-        {
-          id: "22",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "🖼️ ", styles: {} },
-            { type: "text", text: "Drag & drop images", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "23",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "☁️ ", styles: {} },
-            { type: "text", text: "Google Drive sync", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "24",
-          type: "bulletListItem",
-          props: {},
-          content: [
-            { type: "text", text: "🌙 ", styles: {} },
-            { type: "text", text: "Dark/Light theme toggle", styles: {} },
-          ],
-          children: [],
-        },
-        {
-          id: "25",
-          type: "paragraph",
-          props: {},
-          content: [
-            {
-              type: "text",
-              text: "Happy note-taking! 🎉",
-              styles: { bold: true, italic: true },
-            },
-          ],
-          children: [],
-        },
-      ]),
-      createdAt: Date.now(),
-      lastUpdatedAt: Date.now(),
-    };
-    const updatedNotes = [newNote, ...notes];
+  const handleCreateNewNote = async () => {
+    if (!isIndexedDBReady) {
+      console.log(
+        "⚠️ [Create Note] IndexedDB not ready, skipping note creation"
+      );
+      return;
+    }
 
-    console.log("📝 [Create Note] New note created:", {
-      noteId: newNote.id,
-      noteName: newNote.name,
-      contentLength: newNote.content.length,
-      totalNotes: updatedNotes.length,
-    });
+    try {
+      const newNote: IndexedDBNote = {
+        id: `note-${Date.now()}`,
+        name: "Untitled Note",
+        content: JSON.stringify([
+          {
+            id: "1",
+            type: "paragraph",
+            props: {},
+            content: [
+              { type: "text", text: "🎉 Welcome to ", styles: {} },
+              { type: "text", text: "Tabula", styles: { bold: true } },
+              { type: "text", text: "! 🎉", styles: {} },
+            ],
+            children: [],
+          },
+          {
+            id: "2",
+            type: "paragraph",
+            props: {},
+            content: [
+              {
+                type: "text",
+                text: "Your personal note-taking companion with IndexedDB storage and image support! ✨",
+                styles: {},
+              },
+            ],
+            children: [],
+          },
+          {
+            id: "3",
+            type: "heading",
+            props: { level: 2 },
+            content: [{ type: "text", text: "🖼️ Image Support", styles: {} }],
+            children: [],
+          },
+          {
+            id: "4",
+            type: "paragraph",
+            props: {},
+            content: [
+              {
+                type: "text",
+                text: "You can now paste images directly into your notes! Images are stored locally in IndexedDB and synced to Google Drive when you sync.",
+                styles: {},
+              },
+            ],
+            children: [],
+          },
+          {
+            id: "5",
+            type: "paragraph",
+            props: {},
+            content: [
+              {
+                type: "text",
+                text: "Try pasting an image (Ctrl/Cmd + V) or dragging and dropping one into this note!",
+                styles: { italic: true },
+              },
+            ],
+            children: [],
+          },
+        ]),
+        createdAt: Date.now(),
+        lastUpdatedAt: Date.now(),
+      };
 
-    setNotes(updatedNotes);
-    setActiveNoteId(newNote.id);
-    localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
+      console.log("📝 [Create Note] Creating new note:", newNote.id);
 
-    // Note: Auto-sync on note creation has been removed
-    // Users should manually sync or wait for daily sync reminder
+      // Save to IndexedDB
+      await IndexedDB.saveNote(newNote);
 
-    toast({
-      title: "New Note Created",
-      description: "Ready for your thoughts!",
-    });
+      // Update local state
+      const updatedNotes = [newNote, ...notes];
+      setNotes(updatedNotes);
+      setActiveNoteId(newNote.id);
+
+      // Save active note ID to localStorage for persistence
+      localStorage.setItem("tabula-last-active-note", newNote.id);
+
+      console.log("✅ [Create Note] New note created successfully");
+
+      // Note: Auto-sync on note creation has been removed
+      // Users should manually sync or wait for daily sync reminder
+
+      toast({
+        title: "New Note Created",
+        description: "Ready for your thoughts!",
+      });
+    } catch (error) {
+      console.error("❌ [Create Note] Failed to create note:", error);
+      toast({
+        variant: "destructive",
+        title: "Create Failed",
+        description: "Could not create a new note.",
+      });
+    }
   };
 
   const handleDeleteNote = async (noteIdToDelete: string) => {
-    console.log("🗑️ [Delete] Starting note deletion:", noteIdToDelete);
-
-    const updatedNotes = notes.filter((n) => n.id !== noteIdToDelete);
-    setNotes(updatedNotes);
-    localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
-
-    if (activeNoteId === noteIdToDelete) {
-      if (updatedNotes.length > 0) {
-        const sortedNotes = [...updatedNotes].sort(
-          (a, b) => b.lastUpdatedAt - a.lastUpdatedAt
-        );
-        setActiveNoteId(sortedNotes[0].id);
-      } else {
-        handleCreateNewNote();
-      }
+    if (!isIndexedDBReady) {
+      console.log("⚠️ [Delete] IndexedDB not ready, skipping note deletion");
+      return;
     }
 
-    // Delete from Google Drive immediately without triggering sync
-    if (isLoggedIn) {
-      try {
-        console.log(
-          "🗑️ [Delete] Deleting note from Google Drive:",
-          noteIdToDelete
-        );
-        await GoogleDrive.deleteNoteFromDrive(noteIdToDelete);
-        console.log("✅ [Delete] Note deleted from Google Drive successfully");
-        toast({
-          title: "Note Deleted",
-          description: "Note removed from local storage and Google Drive.",
-        });
-      } catch (error) {
-        console.error("❌ [Delete] Failed to delete from Google Drive:", error);
-        toast({
-          title: "Note Deleted Locally",
-          description:
-            "Note removed locally, but failed to delete from Google Drive.",
-          variant: "destructive",
-        });
+    console.log("🗑️ [Delete] Starting note deletion:", noteIdToDelete);
+
+    // Check if this is the last note
+    const isLastNote = notes.length === 1;
+
+    try {
+      // Delete from IndexedDB
+      await IndexedDB.deleteNote(noteIdToDelete);
+
+      // Update local state
+      const updatedNotes = notes.filter((n) => n.id !== noteIdToDelete);
+      setNotes(updatedNotes);
+
+      // Handle active note switching
+      if (activeNoteId === noteIdToDelete) {
+        if (updatedNotes.length > 0) {
+          const sortedNotes = [...updatedNotes].sort(
+            (a, b) => b.lastUpdatedAt - a.lastUpdatedAt
+          );
+          setActiveNoteId(sortedNotes[0].id);
+          localStorage.setItem("tabula-last-active-note", sortedNotes[0].id);
+        } else {
+          // Always create a new note when deleting the last note
+          // This ensures there's always at least one note available
+          console.log("🔄 [Delete] Last note deleted, creating new note...");
+
+          // Create new note directly instead of using handleCreateNewNote
+          const newNote: IndexedDBNote = {
+            id: `note-${Date.now()}`,
+            name: "Untitled Note",
+            content: JSON.stringify([
+              {
+                id: "1",
+                type: "paragraph",
+                props: {},
+                content: [
+                  { type: "text", text: "🎉 Welcome to ", styles: {} },
+                  { type: "text", text: "Tabula", styles: { bold: true } },
+                  { type: "text", text: "! 🎉", styles: {} },
+                ],
+                children: [],
+              },
+              {
+                id: "2",
+                type: "paragraph",
+                props: {},
+                content: [
+                  {
+                    type: "text",
+                    text: "Your personal note-taking companion with IndexedDB storage and image support! ✨",
+                    styles: {},
+                  },
+                ],
+                children: [],
+              },
+            ]),
+            createdAt: Date.now(),
+            lastUpdatedAt: Date.now(),
+          };
+
+          // Save to IndexedDB
+          await IndexedDB.saveNote(newNote);
+
+          // Update local state with the new note (replacing the empty array)
+          setNotes([newNote]);
+          setActiveNoteId(newNote.id);
+          localStorage.setItem("tabula-last-active-note", newNote.id);
+
+          console.log("✅ [Delete] New note created successfully:", newNote.id);
+
+          // If user is logged in, upload the new note to Google Drive immediately
+          if (isLoggedIn) {
+            try {
+              console.log("📤 [Delete] Uploading new note to Google Drive...");
+              await GoogleDrive.uploadNotesToDrive([newNote]);
+              console.log(
+                "✅ [Delete] New note uploaded to Google Drive successfully"
+              );
+            } catch (error) {
+              console.error(
+                "❌ [Delete] Failed to upload new note to Google Drive:",
+                error
+              );
+              // Don't show error toast here as the note was created successfully locally
+            }
+          }
+        }
       }
-    } else {
+
+      // Clean up orphaned images asynchronously
+      ImageStorage.cleanupOrphanedImages().then((cleanedCount) => {
+        if (cleanedCount > 0) {
+          console.log(`🧹 [Delete] Cleaned up ${cleanedCount} orphaned images`);
+        }
+      });
+
+      // Delete from Google Drive immediately without triggering sync
+      if (isLoggedIn) {
+        try {
+          console.log(
+            "🗑️ [Delete] Deleting note from Google Drive:",
+            noteIdToDelete
+          );
+          await GoogleDrive.deleteNoteFromDrive(noteIdToDelete);
+          console.log(
+            "✅ [Delete] Note deleted from Google Drive successfully"
+          );
+
+          if (isLastNote) {
+            toast({
+              title: "Note Deleted & New Note Created",
+              description:
+                "Last note removed from Google Drive. A new note has been created and synced.",
+            });
+          } else {
+            toast({
+              title: "Note Deleted",
+              description: "Note removed from local storage and Google Drive.",
+            });
+          }
+        } catch (error) {
+          console.error(
+            "❌ [Delete] Failed to delete from Google Drive:",
+            error
+          );
+          toast({
+            title: "Note Deleted Locally",
+            description:
+              "Note removed locally, but failed to delete from Google Drive.",
+            variant: "destructive",
+          });
+        }
+      } else {
+        if (isLastNote) {
+          toast({
+            title: "Note Deleted & New Note Created",
+            description:
+              "Last note removed locally. A new note has been created.",
+          });
+        } else {
+          toast({
+            title: "Note Deleted",
+            description: "Note removed from local storage.",
+          });
+        }
+      }
+
+      console.log("✅ [Delete] Note deleted successfully from IndexedDB");
+    } catch (error) {
+      console.error("❌ [Delete] Failed to delete note from IndexedDB:", error);
       toast({
-        title: "Note Deleted",
+        variant: "destructive",
+        title: "Delete Failed",
+        description: "Could not delete the note from local storage.",
       });
     }
   };
 
   const handleRenameNote = async (noteId: string, newName: string) => {
+    if (!isIndexedDBReady) {
+      console.log("⚠️ [Rename] IndexedDB not ready, skipping note rename");
+      return;
+    }
+
     const now = Date.now();
 
     console.log("📝 [Rename] Note rename requested:", {
@@ -1550,58 +1244,76 @@ export default function Home() {
       timestamp: new Date(now).toISOString(),
     });
 
-    // Cancel any pending content change syncs to prevent conflicts
-    if (syncTimeoutRef.current) {
-      clearTimeout(syncTimeoutRef.current);
-      console.log("🔄 [Rename] Cancelled pending content change sync");
-    }
+    try {
+      // Find the current note
+      const currentNote = notes.find((n) => n.id === noteId);
+      if (!currentNote) {
+        console.log("⚠️ [Rename] Note not found, skipping rename");
+        return;
+      }
 
-    // Save current editor content first to ensure we have the latest content
-    console.log("💾 [Rename] Saving current editor content before rename...");
-    const notesWithCurrentContent = saveCurrentEditorContent();
+      // Update the note with new name
+      const updatedNote: IndexedDBNote = {
+        ...currentNote,
+        name: newName,
+        lastUpdatedAt: now,
+      };
 
-    // Update the note name in the notes with current content
-    const updatedNotes = notesWithCurrentContent.map((n) =>
-      n.id === noteId ? { ...n, name: newName, lastUpdatedAt: now } : n
-    );
+      console.log("📝 [Rename] Updating note in IndexedDB:", {
+        noteId,
+        newName,
+        lastUpdatedAt: now,
+      });
 
-    console.log("📝 [Rename] Note renamed locally:", {
-      noteId,
-      newName,
-      lastUpdatedAt: now,
-    });
+      // Save to IndexedDB
+      await IndexedDB.saveNote(updatedNote);
 
-    setNotes(updatedNotes);
-    localStorage.setItem("tabula-notes", JSON.stringify(updatedNotes));
-
-    // Immediately sync rename to Google Drive without debounce
-    if (isLoggedIn && !isSyncing) {
-      console.log(
-        "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
+      // Update local state
+      const updatedNotes = notes.map((n) =>
+        n.id === noteId ? updatedNote : n
       );
-      try {
-        await GoogleDrive.uploadNotesToDrive(updatedNotes);
+      setNotes(updatedNotes);
+
+      console.log("✅ [Rename] Note renamed successfully in IndexedDB");
+
+      // Immediately sync rename to Google Drive without debounce
+      if (isLoggedIn && !isSyncing) {
         console.log(
-          "✅ [Rename] Note renamed and synced to Google Drive successfully"
+          "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
         );
+        try {
+          await GoogleDrive.uploadNotesToDrive(updatedNotes);
+          console.log(
+            "✅ [Rename] Note renamed and synced to Google Drive successfully"
+          );
+          toast({
+            title: "Note Renamed & Synced",
+            description:
+              "Your note has been renamed and synced to Google Drive.",
+          });
+        } catch (error) {
+          console.error(
+            "❌ [Rename] Failed to sync renamed note to Google Drive:",
+            error
+          );
+          toast({
+            title: "Note Renamed Locally",
+            description: "Rename successful, but sync to Google Drive failed.",
+            variant: "destructive",
+          });
+        }
+      } else {
         toast({
-          title: "Note Renamed & Synced",
-          description: "Your note has been renamed and synced to Google Drive.",
-        });
-      } catch (error) {
-        console.error(
-          "❌ [Rename] Failed to sync renamed note to Google Drive:",
-          error
-        );
-        toast({
-          title: "Note Renamed Locally",
-          description: "Rename successful, but sync to Google Drive failed.",
-          variant: "destructive",
+          title: "Note Renamed Successfully",
+          description: "Note renamed in local storage.",
         });
       }
-    } else {
+    } catch (error) {
+      console.error("❌ [Rename] Failed to rename note in IndexedDB:", error);
       toast({
-        title: "Note Renamed Successfully",
+        variant: "destructive",
+        title: "Rename Failed",
+        description: "Could not rename the note in local storage.",
       });
     }
   };
@@ -2159,9 +1871,18 @@ export default function Home() {
     } ${tomorrow.getDate()})`;
   };
 
-  if (!isClient) {
+  if (!isClient || isLoadingNotes) {
     return (
-      <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300"></main>
+      <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              {!isClient ? "Loading..." : "Initializing storage..."}
+            </p>
+          </div>
+        </div>
+      </main>
     );
   }
 
@@ -2171,15 +1892,67 @@ export default function Home() {
         {/* Full Sync Loading Overlay */}
         {isFullSyncing && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-4 rounded-lg bg-card p-8 shadow-lg border">
+            <div className="flex flex-col items-center gap-4 rounded-lg bg-card p-8 shadow-lg border max-w-lg w-full mx-4">
               <Loader2 className="w-12 h-12 animate-spin text-primary" />
-              <div className="text-center">
+              <div className="text-center w-full">
                 <h3 className="text-lg font-semibold mb-2">
                   Syncing with Google Drive
                 </h3>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-muted-foreground mb-4">
                   Please wait while we fetch and merge your notes...
                 </p>
+
+                {/* Progress List */}
+                {syncProgress.length > 0 && (
+                  <div className="max-h-64 overflow-y-auto border rounded-lg p-4 bg-muted/30">
+                    <div className="space-y-2">
+                      {syncProgress.map((item) => (
+                        <div
+                          key={item.noteId}
+                          className="flex items-center gap-3 py-2"
+                        >
+                          <div className="flex-shrink-0">
+                            {item.status === "complete" ? (
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                            ) : item.status === "error" ? (
+                              <AlertCircle className="w-5 h-5 text-red-500" />
+                            ) : (
+                              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {item.noteName}
+                            </p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {item.status === "syncing" && "Syncing..."}
+                              {item.status === "complete" && "Complete"}
+                              {item.status === "error" && "Error"}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                    ℹ️ Note: Images will not sync
+                  </p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                    Visit{" "}
+                    <a
+                      href="https://tabulanotes.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
+                    >
+                      tabulanotes.com
+                    </a>{" "}
+                    for feature requests and feedback
+                  </p>
+                </div>
                 <p className="text-xs text-muted-foreground mt-2">
                   Do not close this window
                 </p>
@@ -2343,7 +2116,16 @@ export default function Home() {
             <div className="w-full h-full  p-10 outline-none text-lg leading-relaxed">
               <BlockNoteEditor
                 ref={editorRef}
-                initialContent={convertHtmlToBlockNote(activeNote.content)}
+                initialContent={(() => {
+                  const content = convertHtmlToBlockNote(activeNote.content);
+                  console.log("📝 [Page] Passing content to editor:", {
+                    noteId: activeNote.id,
+                    contentLength: content.length,
+                    hasImages: content.includes('"type":"image"'),
+                    contentPreview: content.substring(0, 200) + "...",
+                  });
+                  return content;
+                })()}
                 onChange={handleContentChange}
                 autoFocus={!isFullSyncing} // Don't auto-focus during full sync
                 theme={theme as "light" | "dark"}

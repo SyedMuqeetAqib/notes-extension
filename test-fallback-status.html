@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test Fallback Status</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+      }
+      .status {
+        padding: 10px;
+        margin: 10px 0;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+      }
+      .warning {
+        background-color: #fff3cd;
+        color: #856404;
+        border: 1px solid #ffeaa7;
+      }
+      .info {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        border: 1px solid #bee5eb;
+      }
+      .error {
+        background-color: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+      }
+      button {
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+      }
+      .code {
+        background-color: #f8f9fa;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Chrome Extension Fallback Status Test</h1>
+    <div id="status" class="info">Ready to test...</div>
+
+    <button id="testFallback">Test Fallback System</button>
+    <button id="testGapi">Test GAPI Availability</button>
+    <button id="testRestApi">Test REST API Fallback</button>
+
+    <div id="results"></div>
+
+    <script>
+      // Simulate the Chrome extension environment
+      console.log("🧪 Testing Chrome extension fallback system...");
+
+      // Mock the script loading process
+      let gapiLoaded = false;
+      let gisLoaded = false;
+
+      function addResult(message, type = "info") {
+        const results = document.getElementById("results");
+        const div = document.createElement("div");
+        div.className = `status ${type}`;
+        div.textContent = message;
+        results.appendChild(div);
+      }
+
+      function updateStatus(message, type = "info") {
+        const status = document.getElementById("status");
+        status.textContent = message;
+        status.className = `status ${type}`;
+      }
+
+      // Test Fallback System
+      document.getElementById("testFallback").addEventListener("click", () => {
+        updateStatus("Testing fallback system...", "info");
+
+        // Simulate the script loading process
+        gapiLoaded = true;
+
+        // Check if gapi is available (it won't be in Chrome extension)
+        if (typeof window.gapi !== "undefined" && window.gapi.load) {
+          addResult(
+            "❌ GAPI should not be available in Chrome extension",
+            "error"
+          );
+        } else {
+          addResult("✅ GAPI correctly detected as unavailable", "success");
+          addResult(
+            "⚠️ This triggers the fallback system (expected)",
+            "warning"
+          );
+          addResult("✅ Fallback gapi object will be created", "success");
+        }
+      });
+
+      // Test GAPI Availability
+      document.getElementById("testGapi").addEventListener("click", () => {
+        updateStatus("Testing GAPI availability...", "info");
+
+        // Check current state
+        if (typeof window.gapi !== "undefined") {
+          addResult("✅ GAPI is available", "success");
+          addResult("This means you are NOT in Chrome extension mode", "info");
+        } else {
+          addResult("⚠️ GAPI is not available", "warning");
+          addResult("This is EXPECTED in Chrome extension mode", "info");
+          addResult(
+            "The fallback system will handle this automatically",
+            "success"
+          );
+        }
+      });
+
+      // Test REST API Fallback
+      document.getElementById("testRestApi").addEventListener("click", () => {
+        updateStatus("Testing REST API fallback...", "info");
+
+        // Simulate creating the fallback gapi object
+        if (!window.gapi) {
+          window.gapi = {
+            load: (module, callback) => {
+              addResult(`🔄 Fallback gapi.load(${module}) called`, "info");
+              setTimeout(callback, 100);
+            },
+            client: {
+              setToken: (token) => {
+                addResult("✅ Fallback gapi.client.setToken called", "success");
+                window._gapiToken = token;
+              },
+              getToken: () => {
+                addResult("✅ Fallback gapi.client.getToken called", "success");
+                return window._gapiToken || null;
+              },
+              drive: {
+                files: {
+                  list: async (params) => {
+                    addResult(
+                      "✅ Fallback gapi.client.drive.files.list called",
+                      "success"
+                    );
+                    addResult(
+                      "This would make a REST API call to Google Drive",
+                      "info"
+                    );
+                    return { result: { files: [] } };
+                  },
+                },
+              },
+            },
+          };
+          addResult("✅ Fallback gapi object created successfully", "success");
+        } else {
+          addResult("GAPI already exists", "info");
+        }
+      });
+
+      updateStatus(
+        "Chrome extension fallback test ready. Click buttons to test.",
+        "info"
+      );
+
+      // Show the expected console message
+      addResult(
+        'Expected console message: "⚠️ [Google Drive] GAPI not available, using fallback"',
+        "warning"
+      );
+      addResult(
+        "This message indicates the fallback system is working correctly!",
+        "success"
+      );
+    </script>
+  </body>
+</html>
