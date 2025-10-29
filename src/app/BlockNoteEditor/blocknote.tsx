@@ -74,40 +74,6 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
           return URL.createObjectURL(file);
         }
       },
-      // Enable paste handling for images
-      pasteHandler: ({ event, editor, defaultPasteHandler }) => {
-        const items = event.clipboardData?.items;
-        if (items) {
-          for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            if (item.type.indexOf("image") !== -1) {
-              const file = item.getAsFile();
-              if (file) {
-                // Let BlockNote handle the image upload using our uploadFile function
-                if (editor.uploadFile) {
-                  editor.uploadFile(file).then((url) => {
-                    editor.insertBlocks(
-                      [
-                        {
-                          type: "image",
-                          props: {
-                            url: url,
-                          },
-                        },
-                      ],
-                      editor.getTextCursorPosition().block,
-                      "after"
-                    );
-                  });
-                }
-                return true; // Indicate that we handled this paste event
-              }
-            }
-          }
-        }
-        // For all other content, use the default paste handler
-        return defaultPasteHandler();
-      },
     });
 
     const isInitialized = useRef(false);
@@ -297,6 +263,115 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
 
       return () => clearTimeout(timeoutId);
     }, [editor, autoFocus]);
+
+    // Add direct paste event listener to handle images
+    useEffect(() => {
+      if (!editor) return;
+
+      const handlePaste = async (event: ClipboardEvent) => {
+        console.log("🔄 [BlockNote] Direct paste event triggered:", {
+          clipboardData: !!event.clipboardData,
+          items: event.clipboardData?.items?.length || 0,
+        });
+
+        const items = event.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            console.log("📋 [BlockNote] Clipboard item:", {
+              type: item.type,
+              kind: item.kind,
+            });
+
+            if (item.type.indexOf("image") !== -1) {
+              console.log("🖼️ [BlockNote] Image detected in clipboard");
+              const file = item.getAsFile();
+              if (file) {
+                console.log("📁 [BlockNote] File extracted:", {
+                  name: file.name,
+                  type: file.type,
+                  size: file.size,
+                });
+
+                // Prevent default paste behavior
+                event.preventDefault();
+
+                // Use BlockNote's uploadFile function
+                if (editor.uploadFile) {
+                  console.log("⬆️ [BlockNote] Starting image upload...");
+                  try {
+                    const url = await editor.uploadFile(file);
+                    console.log(
+                      "✅ [BlockNote] Image uploaded successfully:",
+                      url
+                    );
+
+                    // Convert the hash URL to an Object URL for immediate display
+                    const hash = (url as string).replace("indexeddb://", "");
+                    const displayUrl = await ImageStorage.getImageUrl(hash);
+
+                    // Insert the image block at the current cursor position
+                    const currentBlock = editor.getTextCursorPosition().block;
+                    if (currentBlock) {
+                      editor.insertBlocks(
+                        [
+                          {
+                            type: "image",
+                            props: {
+                              url: displayUrl,
+                            },
+                          },
+                        ],
+                        currentBlock,
+                        "after"
+                      );
+                    } else {
+                      // Fallback: insert at the end of the document
+                      editor.insertBlocks(
+                        [
+                          {
+                            type: "image",
+                            props: {
+                              url: displayUrl,
+                            },
+                          },
+                        ],
+                        editor.document[editor.document.length - 1],
+                        "after"
+                      );
+                    }
+                    console.log(
+                      "📝 [BlockNote] Image block inserted with display URL"
+                    );
+                  } catch (error) {
+                    console.error("❌ [BlockNote] Image upload failed:", error);
+                  }
+                } else {
+                  console.error(
+                    "❌ [BlockNote] editor.uploadFile is not available"
+                  );
+                }
+                return;
+              } else {
+                console.error(
+                  "❌ [BlockNote] Could not extract file from clipboard item"
+                );
+              }
+            }
+          }
+        } else {
+          console.log("ℹ️ [BlockNote] No clipboard items found");
+        }
+      };
+
+      // Add event listener to the editor's DOM element
+      const editorElement = editor._tiptapEditor.view.dom;
+      editorElement.addEventListener("paste", handlePaste);
+
+      return () => {
+        editorElement.removeEventListener("paste", handlePaste);
+      };
+    }, [editor]);
 
     // Handle content changes
     useEffect(() => {
