@@ -41,7 +41,7 @@ type StatusIndicatorProps = {
   tooltipContent?: React.ReactNode;
 };
 
-export function StatusIndicator({
+export const StatusIndicator = React.memo(function StatusIndicator({
   isLoggedIn,
   isSyncing,
   isFullSyncing,
@@ -255,4 +255,4 @@ export function StatusIndicator({
       </TooltipContent>
     </Tooltip>
   );
-}
+});

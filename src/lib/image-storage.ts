@@ -13,6 +13,7 @@ export interface ImageUrlCache {
 class ImageStorageManager {
   private urlCache: ImageUrlCache = {};
   private readonly MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+  private readonly MAX_CACHE_SIZE = 50; // Maximum number of cached URLs
   private readonly ALLOWED_MIME_TYPES = [
     "image/jpeg",
     "image/jpg",
@@ -21,6 +22,32 @@ class ImageStorageManager {
     "image/webp",
     "image/svg+xml",
   ];
+
+  /**
+   * LRU cache eviction - removes oldest entries when cache exceeds limit
+   */
+  private evictCacheIfNeeded(): void {
+    const cacheKeys = Object.keys(this.urlCache);
+    if (cacheKeys.length > this.MAX_CACHE_SIZE) {
+      // Remove oldest entries (simple FIFO strategy)
+      const toRemove = cacheKeys.slice(
+        0,
+        cacheKeys.length - this.MAX_CACHE_SIZE
+      );
+      toRemove.forEach((hash) => {
+        const url = this.urlCache[hash];
+        if (url && url.startsWith("blob:")) {
+          URL.revokeObjectURL(url);
+        }
+        delete this.urlCache[hash];
+      });
+      if (process.env.NODE_ENV === "development") {
+        console.log(
+          `🧹 [ImageStorage] Evicted ${toRemove.length} URLs from cache`
+        );
+      }
+    }
+  }
 
   /**
    * Generate SHA-256 hash of a blob
@@ -109,7 +136,7 @@ class ImageStorageManager {
   }
 
   /**
-   * Get Object URL for display (with caching)
+   * Get Object URL for display (with LRU caching)
    */
   async getImageUrl(hash: string): Promise<string> {
     try {
@@ -127,10 +154,13 @@ class ImageStorageManager {
       // Create Object URL
       const url = URL.createObjectURL(imageRecord.blob);
 
-      // Cache the URL
+      // Cache the URL and evict if needed
       this.urlCache[hash] = url;
+      this.evictCacheIfNeeded();
 
-      console.log("🔗 [ImageStorage] Created Object URL for:", hash);
+      if (process.env.NODE_ENV === "development") {
+        console.log("🔗 [ImageStorage] Created Object URL for:", hash);
+      }
       return url;
     } catch (error) {
       console.error("❌ [ImageStorage] Failed to get image URL:", error);

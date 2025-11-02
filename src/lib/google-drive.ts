@@ -71,6 +71,10 @@ async function makeRestApiCall(options: {
   const baseUrl = "https://www.googleapis.com";
   const url = new URL(baseUrl + options.path);
 
+  // Check if this is a media upload
+  const uploadType = options.params?.uploadType;
+  const isMediaUpload = uploadType === "media";
+
   // Add query parameters
   if (options.params) {
     Object.keys(options.params).forEach((key) => {
@@ -80,7 +84,6 @@ async function makeRestApiCall(options: {
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token.access_token}`,
-    "Content-Type": "application/json",
   };
 
   const requestOptions: RequestInit = {
@@ -89,7 +92,15 @@ async function makeRestApiCall(options: {
   };
 
   if (options.body && options.method !== "GET") {
-    requestOptions.body = JSON.stringify(options.body);
+    if (isMediaUpload && typeof options.body === "string") {
+      // For media uploads, send body as-is (raw string)
+      requestOptions.body = options.body;
+      headers["Content-Type"] = "application/json"; // JSON files
+    } else {
+      // For regular requests, JSON stringify the body
+      requestOptions.body = JSON.stringify(options.body);
+      headers["Content-Type"] = "application/json";
+    }
   }
 
   console.log(
@@ -110,9 +121,22 @@ async function makeRestApiCall(options: {
       );
     }
 
-    const data = await response.json();
-    console.log(`✅ [Google Drive] API call successful`);
-    return data;
+    // Handle different response types
+    const contentType = response.headers.get("content-type");
+    if (contentType?.includes("application/json")) {
+      const data = await response.json();
+      console.log(`✅ [Google Drive] API call successful`);
+      return data;
+    } else if (response.status === 204) {
+      // No content (for DELETE operations)
+      console.log(`✅ [Google Drive] API call successful (204 No Content)`);
+      return {};
+    } else {
+      // For media uploads, return the response as text
+      const text = await response.text();
+      console.log(`✅ [Google Drive] API call successful`);
+      return text;
+    }
   } catch (error) {
     console.error(`❌ [Google Drive] REST API call failed:`, error);
     throw error;
@@ -174,11 +198,37 @@ let cachedNoteFiles: Map<string, string> | null = null; // noteId -> fileId
 let cacheTimestamp = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
+// Extended cache for file metadata
+interface FileMetadataCache {
+  fileId: string;
+  name: string;
+  modifiedTime: string;
+  cachedAt: number;
+}
+
+let fileMetadataCache = new Map<string, FileMetadataCache>();
+const METADATA_CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
+
 function clearCache() {
   cachedAppFolderId = null;
   cachedNoteFiles = null;
   cacheTimestamp = 0;
-  console.log("🗑️ [Google Drive] Cache cleared");
+  fileMetadataCache.clear();
+  if (process.env.NODE_ENV === "development") {
+    console.log("🗑️ [Google Drive] Cache cleared");
+  }
+}
+
+/**
+ * Clean up stale metadata cache entries
+ */
+function cleanupMetadataCache(): void {
+  const now = Date.now();
+  for (const [key, metadata] of fileMetadataCache.entries()) {
+    if (now - metadata.cachedAt > METADATA_CACHE_DURATION) {
+      fileMetadataCache.delete(key);
+    }
+  }
 }
 
 /**
@@ -474,7 +524,8 @@ async function makeDriveAPICall(
   method: string,
   url: string,
   params?: any,
-  uploadType?: string
+  uploadType?: string,
+  body?: string | any
 ): Promise<any> {
   const tokenResponse = window._gapiToken;
   if (!tokenResponse) {
@@ -493,18 +544,24 @@ async function makeDriveAPICall(
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${accessToken}`,
-    "Content-Type": "application/json",
   };
 
   let requestUrl = url;
+
+  // Handle query parameters (including uploadType)
+  const queryParams = new URLSearchParams();
+  if (uploadType) {
+    queryParams.append("uploadType", uploadType);
+  }
   if (params && method === "GET") {
-    const searchParams = new URLSearchParams();
     Object.entries(params).forEach(([key, value]) => {
       if (value !== undefined && value !== null) {
-        searchParams.append(key, String(value));
+        queryParams.append(key, String(value));
       }
     });
-    requestUrl += "?" + searchParams.toString();
+  }
+  if (queryParams.toString()) {
+    requestUrl += "?" + queryParams.toString();
   }
 
   const requestOptions: RequestInit = {
@@ -512,19 +569,31 @@ async function makeDriveAPICall(
     headers,
   };
 
-  if (params && method !== "GET") {
-    if (uploadType === "multipart") {
+  // Handle request body
+  if (method !== "GET") {
+    if (uploadType === "media" && body) {
+      // For media uploads, send body as-is with appropriate content type
+      requestOptions.body =
+        typeof body === "string" ? body : JSON.stringify(body);
+      headers["Content-Type"] = "application/json"; // JSON files
+    } else if (uploadType === "multipart") {
       // Handle file upload with multipart
       const formData = new FormData();
-      Object.entries(params).forEach(([key, value]) => {
+      Object.entries(params || {}).forEach(([key, value]) => {
         if (value !== undefined && value !== null) {
           formData.append(key, value as any);
         }
       });
       requestOptions.body = formData;
-      delete headers["Content-Type"]; // Let browser set multipart boundary
-    } else {
+      // Let browser set multipart boundary
+    } else if (params) {
+      // For regular JSON requests
       requestOptions.body = JSON.stringify(params);
+      headers["Content-Type"] = "application/json";
+    } else if (body) {
+      requestOptions.body =
+        typeof body === "string" ? body : JSON.stringify(body);
+      headers["Content-Type"] = "application/json";
     }
   }
 
@@ -556,18 +625,28 @@ async function makeDriveAPICall(
     if (response.status === 204) {
       // DELETE operations return 204 No Content
       console.log(`✅ [Google Drive API] Success: ${method} ${url} completed`);
-      return { result: null };
+      return { status: 204, result: null };
     } else if (
       response.headers.get("content-type")?.includes("application/json")
     ) {
       const data = await response.json();
       console.log(`✅ [Google Drive API] Success:`, data);
-      return { result: data };
+      return { status: response.status, result: data };
     } else {
-      // Handle non-JSON responses
+      // Handle non-JSON responses (like media upload responses)
       const text = await response.text();
-      console.log(`✅ [Google Drive API] Success:`, text);
-      return { result: text };
+      // Try to parse as JSON in case it's JSON but content-type wasn't set correctly
+      try {
+        const jsonData = JSON.parse(text);
+        console.log(`✅ [Google Drive API] Success (parsed JSON):`, jsonData);
+        return { status: response.status, result: jsonData };
+      } catch {
+        console.log(
+          `✅ [Google Drive API] Success (text):`,
+          text.substring(0, 100)
+        );
+        return { status: response.status, result: text };
+      }
     }
   } catch (error) {
     console.error(`❌ [Google Drive API] ${method} ${url} failed:`, error);
@@ -619,7 +698,22 @@ function loadScript(src: string, onload: () => void) {
                   body,
                 } = params;
                 const url = `https://www.googleapis.com${path}`;
-                return makeDriveAPICall(method, url, queryParams || body);
+                // Extract uploadType from queryParams if present
+                const uploadType = queryParams?.uploadType;
+                // Remove uploadType from queryParams to avoid double inclusion
+                const cleanQueryParams = queryParams ? { ...queryParams } : {};
+                if (uploadType) {
+                  delete cleanQueryParams.uploadType;
+                }
+                return makeDriveAPICall(
+                  method,
+                  url,
+                  Object.keys(cleanQueryParams).length > 0
+                    ? cleanQueryParams
+                    : undefined,
+                  uploadType,
+                  body
+                );
               },
               drive: {
                 files: {
@@ -884,7 +978,19 @@ function ensureGoogleScriptsLoaded(): Promise<void> {
                 },
                 request: async (options: any) => {
                   console.log("🔄 [Google Drive] Fallback gapi.client.request");
-                  return await makeRestApiCall(options);
+                  // Extract body and params separately for proper handling
+                  const {
+                    path,
+                    method = "GET",
+                    params: queryParams,
+                    body,
+                  } = options;
+                  return await makeRestApiCall({
+                    path,
+                    method,
+                    params: queryParams,
+                    body: body,
+                  });
                 },
                 drive: {
                   files: {
@@ -1859,23 +1965,31 @@ async function saveIndividualNote(
       body: content,
     });
 
+    // Response is wrapped as { result: ... } from makeDriveAPICall
+    const responseData = response.result || response;
+    const responseStatus = response.status || 200; // Default to 200 if status not available
+
     console.log("📡 [Google Drive] Content upload response:", {
-      status: response.status,
+      status: responseStatus,
       noteId: note.id,
-      success: response.status >= 200 && response.status < 300,
-      responseBody: response.body
-        ? response.body.substring(0, 200) + "..."
-        : "No body",
+      success: responseStatus >= 200 && responseStatus < 300,
+      hasResult: !!response.result,
+      responseData:
+        typeof responseData === "string"
+          ? responseData.substring(0, 200) + "..."
+          : JSON.stringify(responseData).substring(0, 200) + "...",
     });
 
-    if (response.status < 200 || response.status >= 300) {
+    if (responseStatus < 200 || responseStatus >= 300) {
       console.error("❌ [Google Drive] Content upload failed:", {
-        status: response.status,
-        body: response.body,
+        status: responseStatus,
+        result: responseData,
         noteId: note.id,
         fileId: targetFileId,
       });
-      throw new Error(`Failed to upload file content: ${response.body}`);
+      throw new Error(
+        `Failed to upload file content: ${JSON.stringify(responseData)}`
+      );
     }
 
     // Update cache

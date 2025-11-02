@@ -778,31 +778,37 @@ export default function Home() {
   // Users will manually sync when they want to fetch updates from Drive
   // This prevents overwriting content if user starts typing immediately after page load
 
+  // Memoize character count calculation
+  const characterCountMemo = React.useMemo(() => {
+    if (!isClient || !activeNoteId) return 0;
+
+    const activeNote = notes.find((n) => n.id === activeNoteId);
+    if (!activeNote) return 0;
+
+    try {
+      const blocks = JSON.parse(activeNote.content);
+      const textContent = extractTextFromBlocks(blocks);
+      return textContent.length;
+    } catch (error) {
+      // Fallback to HTML parsing for legacy content
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = activeNote.content;
+      return tempDiv.innerText.length;
+    }
+  }, [activeNoteId, isClient, notes]);
+
   // Load note content when activeNoteId changes
   React.useEffect(() => {
     if (!isClient || !activeNoteId) return;
 
-    const activeNote = notes.find((n) => n.id === activeNoteId);
-    if (activeNote) {
-      // Calculate character count from BlockNote content
-      try {
-        const blocks = JSON.parse(activeNote.content);
-        const textContent = extractTextFromBlocks(blocks);
-        setCharacterCount(textContent.length);
-      } catch (error) {
-        // Fallback to HTML parsing for legacy content
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = activeNote.content;
-        setCharacterCount(tempDiv.innerText.length);
-      }
-    }
+    setCharacterCount(characterCountMemo);
 
     // Update the previous active note ID
     prevActiveNoteIdRef.current = activeNoteId;
     localStorage.setItem("tabula-last-active-note", activeNoteId);
-  }, [activeNoteId, isClient, notes]);
+  }, [activeNoteId, isClient, characterCountMemo]);
 
-  const toggleTheme = () => {
+  const toggleTheme = React.useCallback(() => {
     const newTheme = theme === "light" ? "dark" : "light";
     setTheme(newTheme);
     localStorage.setItem("tabula-theme", newTheme);
@@ -812,135 +818,143 @@ export default function Home() {
         newTheme.charAt(0).toUpperCase() + newTheme.slice(1)
       } Mode`,
     });
-  };
+  }, [theme, toast]);
 
-  // Convert HTML content to BlockNote format
-  const convertHtmlToBlockNote = (htmlContent: string): string => {
-    if (!htmlContent || htmlContent.trim() === "") {
-      return JSON.stringify([
-        {
-          id: "1",
-          type: "paragraph",
-          props: {},
-          content: [],
-          children: [],
-        },
-      ]);
-    }
-
-    try {
-      // Try to parse as existing BlockNote content first
-      JSON.parse(htmlContent);
-      return htmlContent;
-    } catch {
-      // If not valid JSON, convert HTML to BlockNote format
-      const tempDiv = document.createElement("div");
-      tempDiv.innerHTML = htmlContent;
-      const textContent = tempDiv.innerText || tempDiv.textContent || "";
-
-      return JSON.stringify([
-        {
-          id: "1",
-          type: "paragraph",
-          props: {},
-          content: textContent
-            ? [{ type: "text", text: textContent, styles: {} }]
-            : [],
-          children: [],
-        },
-      ]);
-    }
-  };
-
-  const handleContentChange = (content: string) => {
-    console.log("🔄 [Content Change] Received content change:", {
-      contentLength: content.length,
-      contentPreview: content.substring(0, 100) + "...",
-      activeNoteId,
-      timestamp: new Date().toISOString(),
-    });
-
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
-
-    // For BlockNote, content is JSON string of blocks
-    // We need to calculate character count from the blocks
-    try {
-      const blocks = JSON.parse(content);
-      const textContent = extractTextFromBlocks(blocks);
-      setCharacterCount(textContent.length);
-      console.log(
-        "📊 [Content Change] Character count updated:",
-        textContent.length
-      );
-    } catch (error) {
-      // Fallback to 0 if parsing fails
-      setCharacterCount(0);
-      console.error("❌ [Content Change] Failed to parse content:", error);
-      console.error(
-        "❌ [Content Change] Content that failed to parse:",
-        content.substring(0, 200) + "..."
-      );
-    }
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (!activeNoteId || !isIndexedDBReady) {
-        console.log(
-          "⚠️ [Content Change] No active note ID or IndexedDB not ready, skipping save"
-        );
-        return;
+  // Convert HTML content to BlockNote format (memoized)
+  const convertHtmlToBlockNote = React.useCallback(
+    (htmlContent: string): string => {
+      if (!htmlContent || htmlContent.trim() === "") {
+        return JSON.stringify([
+          {
+            id: "1",
+            type: "paragraph",
+            props: {},
+            content: [],
+            children: [],
+          },
+        ]);
       }
+
       try {
-        // Find the current note
-        const currentNote = notes.find((n) => n.id === activeNoteId);
-        if (!currentNote) {
+        // Try to parse as existing BlockNote content first
+        JSON.parse(htmlContent);
+        return htmlContent;
+      } catch {
+        // If not valid JSON, convert HTML to BlockNote format
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        const textContent = tempDiv.innerText || tempDiv.textContent || "";
+
+        return JSON.stringify([
+          {
+            id: "1",
+            type: "paragraph",
+            props: {},
+            content: textContent
+              ? [{ type: "text", text: textContent, styles: {} }]
+              : [],
+            children: [],
+          },
+        ]);
+      }
+    },
+    []
+  ); // Stable function reference
+
+  const handleContentChange = React.useCallback(
+    (content: string) => {
+      console.log("🔄 [Content Change] Received content change:", {
+        contentLength: content.length,
+        contentPreview: content.substring(0, 100) + "...",
+        activeNoteId,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+
+      // For BlockNote, content is JSON string of blocks
+      // We need to calculate character count from the blocks
+      try {
+        const blocks = JSON.parse(content);
+        const textContent = extractTextFromBlocks(blocks);
+        setCharacterCount(textContent.length);
+        console.log(
+          "📊 [Content Change] Character count updated:",
+          textContent.length
+        );
+      } catch (error) {
+        // Fallback to 0 if parsing fails
+        setCharacterCount(0);
+        console.error("❌ [Content Change] Failed to parse content:", error);
+        console.error(
+          "❌ [Content Change] Content that failed to parse:",
+          content.substring(0, 200) + "..."
+        );
+      }
+
+      saveTimeoutRef.current = setTimeout(async () => {
+        if (!activeNoteId || !isIndexedDBReady) {
           console.log(
-            "⚠️ [Content Change] Current note not found, skipping save"
+            "⚠️ [Content Change] No active note ID or IndexedDB not ready, skipping save"
           );
           return;
         }
+        try {
+          // Find the current note
+          const currentNote = notes.find((n) => n.id === activeNoteId);
+          if (!currentNote) {
+            console.log(
+              "⚠️ [Content Change] Current note not found, skipping save"
+            );
+            return;
+          }
 
-        // Update the note with new content
-        const updatedNote: IndexedDBNote = {
-          ...currentNote,
-          content: content,
-          lastUpdatedAt: Date.now(),
-        };
+          // Update the note with new content
+          const updatedNote: IndexedDBNote = {
+            ...currentNote,
+            content: content,
+            lastUpdatedAt: Date.now(),
+          };
 
-        console.log("💾 [Content Change] Updating note in IndexedDB:", {
-          activeNoteId,
-          contentLength: content.length,
-          contentPreview: content.substring(0, 200) + "...",
-        });
+          console.log("💾 [Content Change] Updating note in IndexedDB:", {
+            activeNoteId,
+            contentLength: content.length,
+            contentPreview: content.substring(0, 200) + "...",
+          });
 
-        // Save to IndexedDB
-        await IndexedDB.saveNote(updatedNote);
+          // Save to IndexedDB
+          await IndexedDB.saveNote(updatedNote);
 
-        // Don't update local state during auto-save to prevent editor re-render
-        // The notes state will be updated when switching notes or during manual operations
-        // This prevents cursor position from being affected by the debounced save
+          // Don't update local state during auto-save to prevent editor re-render
+          // The notes state will be updated when switching notes or during manual operations
+          // This prevents cursor position from being affected by the debounced save
 
-        // Save active note ID to localStorage for persistence
-        localStorage.setItem("tabula-last-active-note", activeNoteId);
+          // Save active note ID to localStorage for persistence
+          localStorage.setItem("tabula-last-active-note", activeNoteId);
 
-        console.log("✅ [Content Change] Note saved to IndexedDB successfully");
+          console.log(
+            "✅ [Content Change] Note saved to IndexedDB successfully"
+          );
 
-        // Note: Auto-sync on content change has been removed
-        // Users should manually sync or wait for daily sync reminder
-      } catch (error) {
-        console.error(
-          "❌ [Content Change] Failed to save note to IndexedDB:",
-          error
-        );
-        toast({
-          variant: "destructive",
-          title: "Save Failed",
-          description: "Could not save your note to local storage.",
-        });
-      }
-    }, 500); // Debounce time in ms (0.5 seconds)
-  };
+          // Note: Auto-sync on content change has been removed
+          // Users should manually sync or wait for daily sync reminder
+        } catch (error) {
+          console.error(
+            "❌ [Content Change] Failed to save note to IndexedDB:",
+            error
+          );
+          toast({
+            variant: "destructive",
+            title: "Save Failed",
+            description: "Could not save your note to local storage.",
+          });
+        }
+      }, 500); // Debounce time in ms (0.5 seconds)
+    },
+    [activeNoteId, isIndexedDBReady, notes, toast]
+  );
 
   // BlockNote handles formatting internally, so we don't need these functions
 
@@ -989,7 +1003,7 @@ export default function Home() {
     }
   }, [toast, activeNoteId, notes]);
 
-  const handleCreateNewNote = async () => {
+  const handleCreateNewNote = React.useCallback(async () => {
     if (!isIndexedDBReady) {
       console.log(
         "⚠️ [Create Note] IndexedDB not ready, skipping note creation"
@@ -1094,276 +1108,295 @@ export default function Home() {
         description: "Could not create a new note.",
       });
     }
-  };
+  }, [isIndexedDBReady, toast]);
 
-  const handleDeleteNote = async (noteIdToDelete: string) => {
-    if (!isIndexedDBReady) {
-      console.log("⚠️ [Delete] IndexedDB not ready, skipping note deletion");
-      return;
-    }
+  const handleDeleteNote = React.useCallback(
+    async (noteIdToDelete: string) => {
+      if (!isIndexedDBReady) {
+        console.log("⚠️ [Delete] IndexedDB not ready, skipping note deletion");
+        return;
+      }
 
-    console.log("🗑️ [Delete] Starting note deletion:", noteIdToDelete);
+      console.log("🗑️ [Delete] Starting note deletion:", noteIdToDelete);
 
-    // Check if this is the last note
-    const isLastNote = notes.length === 1;
+      // Check if this is the last note
+      const isLastNote = notes.length === 1;
 
-    try {
-      // Delete from IndexedDB
-      await IndexedDB.deleteNote(noteIdToDelete);
+      try {
+        // Delete from IndexedDB
+        await IndexedDB.deleteNote(noteIdToDelete);
 
-      // Update local state
-      const updatedNotes = notes.filter((n) => n.id !== noteIdToDelete);
-      setNotes(updatedNotes);
+        // Update local state
+        const updatedNotes = notes.filter((n) => n.id !== noteIdToDelete);
+        setNotes(updatedNotes);
 
-      // Handle active note switching
-      if (activeNoteId === noteIdToDelete) {
-        if (updatedNotes.length > 0) {
-          const sortedNotes = [...updatedNotes].sort(
-            (a, b) => b.lastUpdatedAt - a.lastUpdatedAt
-          );
-          setActiveNoteId(sortedNotes[0].id);
-          localStorage.setItem("tabula-last-active-note", sortedNotes[0].id);
-        } else {
-          // Always create a new note when deleting the last note
-          // This ensures there's always at least one note available
-          console.log("🔄 [Delete] Last note deleted, creating new note...");
+        // Handle active note switching
+        if (activeNoteId === noteIdToDelete) {
+          if (updatedNotes.length > 0) {
+            const sortedNotes = [...updatedNotes].sort(
+              (a, b) => b.lastUpdatedAt - a.lastUpdatedAt
+            );
+            setActiveNoteId(sortedNotes[0].id);
+            localStorage.setItem("tabula-last-active-note", sortedNotes[0].id);
+          } else {
+            // Always create a new note when deleting the last note
+            // This ensures there's always at least one note available
+            console.log("🔄 [Delete] Last note deleted, creating new note...");
 
-          // Create new note directly instead of using handleCreateNewNote
-          const newNote: IndexedDBNote = {
-            id: `note-${Date.now()}`,
-            name: "Untitled Note",
-            content: JSON.stringify([
-              {
-                id: "1",
-                type: "paragraph",
-                props: {},
-                content: [
-                  { type: "text", text: "🎉 Welcome to ", styles: {} },
-                  { type: "text", text: "Tabula", styles: { bold: true } },
-                  { type: "text", text: "! 🎉", styles: {} },
-                ],
-                children: [],
-              },
-              {
-                id: "2",
-                type: "paragraph",
-                props: {},
-                content: [
-                  {
-                    type: "text",
-                    text: "Your personal note-taking companion with IndexedDB storage and image support! ✨",
-                    styles: {},
-                  },
-                ],
-                children: [],
-              },
-            ]),
-            createdAt: Date.now(),
-            lastUpdatedAt: Date.now(),
-          };
+            // Create new note directly instead of using handleCreateNewNote
+            const newNote: IndexedDBNote = {
+              id: `note-${Date.now()}`,
+              name: "Untitled Note",
+              content: JSON.stringify([
+                {
+                  id: "1",
+                  type: "paragraph",
+                  props: {},
+                  content: [
+                    { type: "text", text: "🎉 Welcome to ", styles: {} },
+                    { type: "text", text: "Tabula", styles: { bold: true } },
+                    { type: "text", text: "! 🎉", styles: {} },
+                  ],
+                  children: [],
+                },
+                {
+                  id: "2",
+                  type: "paragraph",
+                  props: {},
+                  content: [
+                    {
+                      type: "text",
+                      text: "Your personal note-taking companion with IndexedDB storage and image support! ✨",
+                      styles: {},
+                    },
+                  ],
+                  children: [],
+                },
+              ]),
+              createdAt: Date.now(),
+              lastUpdatedAt: Date.now(),
+            };
 
-          // Save to IndexedDB
-          await IndexedDB.saveNote(newNote);
+            // Save to IndexedDB
+            await IndexedDB.saveNote(newNote);
 
-          // Update local state with the new note (replacing the empty array)
-          setNotes([newNote]);
-          setActiveNoteId(newNote.id);
-          localStorage.setItem("tabula-last-active-note", newNote.id);
+            // Update local state with the new note (replacing the empty array)
+            setNotes([newNote]);
+            setActiveNoteId(newNote.id);
+            localStorage.setItem("tabula-last-active-note", newNote.id);
 
-          console.log("✅ [Delete] New note created successfully:", newNote.id);
+            console.log(
+              "✅ [Delete] New note created successfully:",
+              newNote.id
+            );
 
-          // If user is logged in, upload the new note to Google Drive immediately
-          if (isLoggedIn) {
-            try {
-              console.log("📤 [Delete] Uploading new note to Google Drive...");
-              await GoogleDrive.uploadNotesToDrive([newNote]);
-              console.log(
-                "✅ [Delete] New note uploaded to Google Drive successfully"
-              );
-            } catch (error) {
-              console.error(
-                "❌ [Delete] Failed to upload new note to Google Drive:",
-                error
-              );
-              // Don't show error toast here as the note was created successfully locally
+            // If user is logged in, upload the new note to Google Drive immediately
+            if (isLoggedIn) {
+              try {
+                console.log(
+                  "📤 [Delete] Uploading new note to Google Drive..."
+                );
+                await GoogleDrive.uploadNotesToDrive([newNote]);
+                console.log(
+                  "✅ [Delete] New note uploaded to Google Drive successfully"
+                );
+              } catch (error) {
+                console.error(
+                  "❌ [Delete] Failed to upload new note to Google Drive:",
+                  error
+                );
+                // Don't show error toast here as the note was created successfully locally
+              }
             }
           }
         }
-      }
 
-      // Clean up orphaned images asynchronously
-      ImageStorage.cleanupOrphanedImages().then((cleanedCount) => {
-        if (cleanedCount > 0) {
-          console.log(`🧹 [Delete] Cleaned up ${cleanedCount} orphaned images`);
-        }
-      });
+        // Clean up orphaned images asynchronously
+        ImageStorage.cleanupOrphanedImages().then((cleanedCount) => {
+          if (cleanedCount > 0) {
+            console.log(
+              `🧹 [Delete] Cleaned up ${cleanedCount} orphaned images`
+            );
+          }
+        });
 
-      // Delete from Google Drive immediately without triggering sync
-      if (isLoggedIn) {
-        try {
-          console.log(
-            "🗑️ [Delete] Deleting note from Google Drive:",
-            noteIdToDelete
-          );
-          await GoogleDrive.deleteNoteFromDrive(noteIdToDelete);
-          console.log(
-            "✅ [Delete] Note deleted from Google Drive successfully"
-          );
+        // Delete from Google Drive immediately without triggering sync
+        if (isLoggedIn) {
+          try {
+            console.log(
+              "🗑️ [Delete] Deleting note from Google Drive:",
+              noteIdToDelete
+            );
+            await GoogleDrive.deleteNoteFromDrive(noteIdToDelete);
+            console.log(
+              "✅ [Delete] Note deleted from Google Drive successfully"
+            );
 
+            if (isLastNote) {
+              toast({
+                title: "Note Deleted & New Note Created",
+                description:
+                  "Last note removed from Google Drive. A new note has been created and synced.",
+              });
+            } else {
+              toast({
+                title: "Note Deleted",
+                description:
+                  "Note removed from local storage and Google Drive.",
+              });
+            }
+          } catch (error) {
+            console.error(
+              "❌ [Delete] Failed to delete from Google Drive:",
+              error
+            );
+            toast({
+              title: "Note Deleted Locally",
+              description:
+                "Note removed locally, but failed to delete from Google Drive.",
+              variant: "destructive",
+            });
+          }
+        } else {
           if (isLastNote) {
             toast({
               title: "Note Deleted & New Note Created",
               description:
-                "Last note removed from Google Drive. A new note has been created and synced.",
+                "Last note removed locally. A new note has been created.",
             });
           } else {
             toast({
               title: "Note Deleted",
-              description: "Note removed from local storage and Google Drive.",
+              description: "Note removed from local storage.",
             });
           }
-        } catch (error) {
-          console.error(
-            "❌ [Delete] Failed to delete from Google Drive:",
-            error
-          );
-          toast({
-            title: "Note Deleted Locally",
-            description:
-              "Note removed locally, but failed to delete from Google Drive.",
-            variant: "destructive",
-          });
         }
-      } else {
-        if (isLastNote) {
-          toast({
-            title: "Note Deleted & New Note Created",
-            description:
-              "Last note removed locally. A new note has been created.",
-          });
-        } else {
-          toast({
-            title: "Note Deleted",
-            description: "Note removed from local storage.",
-          });
-        }
+
+        console.log("✅ [Delete] Note deleted successfully from IndexedDB");
+      } catch (error) {
+        console.error(
+          "❌ [Delete] Failed to delete note from IndexedDB:",
+          error
+        );
+        toast({
+          variant: "destructive",
+          title: "Delete Failed",
+          description: "Could not delete the note from local storage.",
+        });
       }
+    },
+    [isIndexedDBReady, notes, activeNoteId, isLoggedIn, toast]
+  );
 
-      console.log("✅ [Delete] Note deleted successfully from IndexedDB");
-    } catch (error) {
-      console.error("❌ [Delete] Failed to delete note from IndexedDB:", error);
-      toast({
-        variant: "destructive",
-        title: "Delete Failed",
-        description: "Could not delete the note from local storage.",
-      });
-    }
-  };
-
-  const handleRenameNote = async (noteId: string, newName: string) => {
-    if (!isIndexedDBReady) {
-      console.log("⚠️ [Rename] IndexedDB not ready, skipping note rename");
-      return;
-    }
-
-    const now = Date.now();
-
-    console.log("📝 [Rename] Note rename requested:", {
-      noteId,
-      oldName: notes.find((n) => n.id === noteId)?.name,
-      newName,
-      lastUpdatedAt: now,
-      timestamp: new Date(now).toISOString(),
-    });
-
-    try {
-      // Find the current note
-      const currentNote = notes.find((n) => n.id === noteId);
-      if (!currentNote) {
-        console.log("⚠️ [Rename] Note not found, skipping rename");
+  const handleRenameNote = React.useCallback(
+    async (noteId: string, newName: string) => {
+      if (!isIndexedDBReady) {
+        console.log("⚠️ [Rename] IndexedDB not ready, skipping note rename");
         return;
       }
 
-      // Update the note with new name
-      const updatedNote: IndexedDBNote = {
-        ...currentNote,
-        name: newName,
-        lastUpdatedAt: now,
-      };
+      const now = Date.now();
 
-      console.log("📝 [Rename] Updating note in IndexedDB:", {
+      console.log("📝 [Rename] Note rename requested:", {
         noteId,
+        oldName: notes.find((n) => n.id === noteId)?.name,
         newName,
         lastUpdatedAt: now,
+        timestamp: new Date(now).toISOString(),
       });
 
-      // Save to IndexedDB
-      await IndexedDB.saveNote(updatedNote);
+      try {
+        // Find the current note
+        const currentNote = notes.find((n) => n.id === noteId);
+        if (!currentNote) {
+          console.log("⚠️ [Rename] Note not found, skipping rename");
+          return;
+        }
 
-      // Update local state
-      const updatedNotes = notes.map((n) =>
-        n.id === noteId ? updatedNote : n
-      );
-      setNotes(updatedNotes);
+        // Update the note with new name
+        const updatedNote: IndexedDBNote = {
+          ...currentNote,
+          name: newName,
+          lastUpdatedAt: now,
+        };
 
-      console.log("✅ [Rename] Note renamed successfully in IndexedDB");
+        console.log("📝 [Rename] Updating note in IndexedDB:", {
+          noteId,
+          newName,
+          lastUpdatedAt: now,
+        });
 
-      // Immediately sync rename to Google Drive without debounce
-      if (isLoggedIn && !isSyncing) {
-        console.log(
-          "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
+        // Save to IndexedDB
+        await IndexedDB.saveNote(updatedNote);
+
+        // Update local state
+        const updatedNotes = notes.map((n) =>
+          n.id === noteId ? updatedNote : n
         );
-        try {
-          await GoogleDrive.uploadNotesToDrive(updatedNotes);
+        setNotes(updatedNotes);
+
+        console.log("✅ [Rename] Note renamed successfully in IndexedDB");
+
+        // Immediately sync rename to Google Drive without debounce
+        if (isLoggedIn && !isSyncing) {
           console.log(
-            "✅ [Rename] Note renamed and synced to Google Drive successfully"
+            "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
           );
+          try {
+            await GoogleDrive.uploadNotesToDrive(updatedNotes);
+            console.log(
+              "✅ [Rename] Note renamed and synced to Google Drive successfully"
+            );
+            toast({
+              title: "Note Renamed & Synced",
+              description:
+                "Your note has been renamed and synced to Google Drive.",
+            });
+          } catch (error) {
+            console.error(
+              "❌ [Rename] Failed to sync renamed note to Google Drive:",
+              error
+            );
+            toast({
+              title: "Note Renamed Locally",
+              description:
+                "Rename successful, but sync to Google Drive failed.",
+              variant: "destructive",
+            });
+          }
+        } else {
           toast({
-            title: "Note Renamed & Synced",
-            description:
-              "Your note has been renamed and synced to Google Drive.",
-          });
-        } catch (error) {
-          console.error(
-            "❌ [Rename] Failed to sync renamed note to Google Drive:",
-            error
-          );
-          toast({
-            title: "Note Renamed Locally",
-            description: "Rename successful, but sync to Google Drive failed.",
-            variant: "destructive",
+            title: "Note Renamed Successfully",
+            description: "Note renamed in local storage.",
           });
         }
-      } else {
+      } catch (error) {
+        console.error("❌ [Rename] Failed to rename note in IndexedDB:", error);
         toast({
-          title: "Note Renamed Successfully",
-          description: "Note renamed in local storage.",
+          variant: "destructive",
+          title: "Rename Failed",
+          description: "Could not rename the note in local storage.",
         });
       }
-    } catch (error) {
-      console.error("❌ [Rename] Failed to rename note in IndexedDB:", error);
-      toast({
-        variant: "destructive",
-        title: "Rename Failed",
-        description: "Could not rename the note in local storage.",
-      });
-    }
-  };
+    },
+    [isIndexedDBReady, notes, isLoggedIn, isSyncing, toast]
+  );
 
-  const handleStartRename = () => {
-    if (activeNote) {
+  const handleStartRename = React.useCallback(() => {
+    const note = notes.find((n) => n.id === activeNoteId);
+    if (note) {
       setIsRenaming(true);
-      setRenameValue(activeNote.name);
+      setRenameValue(note.name);
       setTimeout(() => renameInputRef.current?.select(), 0);
     }
-  };
+  }, [notes, activeNoteId]);
 
-  const handleRenameSubmit = () => {
+  const handleRenameSubmit = React.useCallback(() => {
     if (activeNoteId && renameValue.trim()) {
       handleRenameNote(activeNoteId, renameValue.trim());
     }
     setIsRenaming(false);
-  };
+  }, [activeNoteId, renameValue, handleRenameNote]);
 
   // BlockNote handles all keyboard and click interactions internally
 
@@ -1707,17 +1740,19 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleExport]);
 
-  // Cleanup timeouts on unmount
+  // Cleanup timeouts on unmount and when dependencies change
   React.useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
+        syncTimeoutRef.current = null;
       }
     };
-  }, []);
+  }, [activeNoteId]); // Cleanup when active note changes
 
   // Offline detection and auto-sync when connection is restored
   React.useEffect(() => {
@@ -1753,12 +1788,12 @@ export default function Home() {
   // Users will manually sync when they want to fetch updates from Drive
   // This prevents overwriting content if user starts typing immediately after returning to tab
 
-  // 24-hour sync reminder system
+  // 24-hour sync reminder system (optimized with longer interval)
   React.useEffect(() => {
     if (!isLoggedIn || !lastFullSyncTime) return;
 
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-    const CHECK_INTERVAL = 60 * 1000; // Check every minute
+    const CHECK_INTERVAL = 5 * 60 * 1000; // Check every 5 minutes (optimized from 1 minute)
 
     const checkSyncReminder = () => {
       const timeSinceLastSync = Date.now() - lastFullSyncTime;
@@ -1775,7 +1810,9 @@ export default function Home() {
 
         // Only show reminder once every 6 hours to avoid spam
         if (timeSinceLastReminder > 6 * 60 * 60 * 1000) {
-          console.log("⏰ [Sync Reminder] Showing 24-hour sync reminder");
+          if (process.env.NODE_ENV === "development") {
+            console.log("⏰ [Sync Reminder] Showing 24-hour sync reminder");
+          }
           toast({
             title: "Sync Recommended",
             description:
@@ -1793,10 +1830,12 @@ export default function Home() {
     // Check immediately
     checkSyncReminder();
 
-    // Then check every minute
+    // Then check every 5 minutes (reduced frequency for better performance)
     const intervalId = setInterval(checkSyncReminder, CHECK_INTERVAL);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [isLoggedIn, lastFullSyncTime, toast]);
 
   // Daily auto-sync system - syncs once per day after midnight when app loads
@@ -1848,7 +1887,8 @@ export default function Home() {
   }, [isLoggedIn, isGapiLoaded, handleCloudSync]);
 
   const activeNote = notes.find((n) => n.id === activeNoteId);
-  const formatDate = (timestamp: number) => {
+  // Memoize date formatting
+  const formatDate = React.useCallback((timestamp: number) => {
     const date = new Date(timestamp);
     const months = [
       "Jan",
@@ -1867,7 +1907,7 @@ export default function Home() {
     return `${
       months[date.getMonth()]
     } ${date.getDate()}, ${date.getFullYear()}`;
-  };
+  }, []); // Stable function - no dependencies
 
   const getNextSyncTime = () => {
     const now = new Date();

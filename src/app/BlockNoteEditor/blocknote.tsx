@@ -450,6 +450,10 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
               }
             }
 
+            // Clean up old URLs before storing new ones to prevent memory leaks
+            const oldUrls = Object.values(imageUrlMapRef.current);
+            ImageStorage.revokeImageUrls(oldUrls);
+
             // Store for cleanup
             imageUrlMapRef.current = urlMap;
 
@@ -457,7 +461,9 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
             contentToUse = await ImageStorage.replaceRefsWithUrls(
               initialContent
             );
-            console.log("✅ [BlockNote] Images resolved, content updated");
+            if (process.env.NODE_ENV === "development") {
+              console.log("✅ [BlockNote] Images resolved, content updated");
+            }
           }
 
           // Parse and update editor content
@@ -503,16 +509,18 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
       updateEditorContent();
     }, [editor, initialContent, autoFocus]);
 
-    // Cleanup image URLs on unmount
+    // Cleanup image URLs on unmount and when initialContent changes
     useEffect(() => {
       return () => {
-        // Revoke all Object URLs when component unmounts
+        // Revoke all Object URLs when component unmounts or content changes
         const urls = Object.values(imageUrlMapRef.current);
         ImageStorage.revokeImageUrls(urls);
         imageUrlMapRef.current = {};
-        console.log("🧹 [BlockNote] Cleaned up image URLs");
+        if (process.env.NODE_ENV === "development") {
+          console.log("🧹 [BlockNote] Cleaned up image URLs");
+        }
       };
-    }, []);
+    }, [initialContent]); // Re-cleanup when content changes to prevent leaks
 
     // Create a transparent theme based on the current theme
     const baseTheme = theme === "dark" ? darkDefaultTheme : lightDefaultTheme;

@@ -110,6 +110,7 @@ class IndexedDBManager {
 
   /**
    * Save or update a note
+   * Optimized: Reduced console logging in production
    */
   async saveNote(note: Note): Promise<void> {
     const db = await this.ensureDB();
@@ -120,7 +121,9 @@ class IndexedDBManager {
       const request = store.put(note);
 
       request.onsuccess = () => {
-        console.log("✅ [IndexedDB] Note saved:", note.id);
+        if (process.env.NODE_ENV === "development") {
+          console.log("✅ [IndexedDB] Note saved:", note.id);
+        }
         resolve();
       };
 
@@ -128,6 +131,46 @@ class IndexedDBManager {
         console.error("❌ [IndexedDB] Failed to save note:", request.error);
         reject(request.error);
       };
+    });
+  }
+
+  /**
+   * Batch save multiple notes in a single transaction
+   * Optimized: More efficient than individual saves
+   */
+  async saveNotesBatch(notes: Note[]): Promise<void> {
+    if (notes.length === 0) return;
+
+    const db = await this.ensureDB();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction([this.STORES.NOTES], "readwrite");
+      const store = transaction.objectStore(this.STORES.NOTES);
+
+      let completed = 0;
+      let hasError = false;
+
+      notes.forEach((note) => {
+        const request = store.put(note);
+        request.onsuccess = () => {
+          completed++;
+          if (completed === notes.length && !hasError) {
+            if (process.env.NODE_ENV === "development") {
+              console.log(`✅ [IndexedDB] Batch saved ${notes.length} notes`);
+            }
+            resolve();
+          }
+        };
+        request.onerror = () => {
+          if (!hasError) {
+            hasError = true;
+            console.error(
+              "❌ [IndexedDB] Failed to batch save note:",
+              request.error
+            );
+            reject(request.error);
+          }
+        };
+      });
     });
   }
 
@@ -161,6 +204,7 @@ class IndexedDBManager {
 
   /**
    * Get all notes sorted by lastUpdatedAt (newest first)
+   * Optimized: Uses getAll() with index for better performance
    */
   async getAllNotes(): Promise<Note[]> {
     const db = await this.ensureDB();
@@ -169,18 +213,15 @@ class IndexedDBManager {
       const store = transaction.objectStore(this.STORES.NOTES);
       const index = store.index("lastUpdatedAt");
 
-      const request = index.openCursor(null, "prev"); // prev = descending order
-      const notes: Note[] = [];
+      // Use getAll() with cursor for better performance on large datasets
+      const request = index.getAll();
 
-      request.onsuccess = (event) => {
-        const cursor = (event.target as IDBRequest).result;
-        if (cursor) {
-          notes.push(cursor.value);
-          cursor.continue();
-        } else {
-          console.log("✅ [IndexedDB] Retrieved all notes:", notes.length);
-          resolve(notes);
-        }
+      request.onsuccess = () => {
+        const notes = request.result as Note[];
+        // Sort in descending order (newest first) - more efficient than cursor
+        notes.sort((a, b) => b.lastUpdatedAt - a.lastUpdatedAt);
+        console.log("✅ [IndexedDB] Retrieved all notes:", notes.length);
+        resolve(notes);
       };
 
       request.onerror = () => {

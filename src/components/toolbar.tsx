@@ -89,7 +89,7 @@ type ToolbarProps = {
   handleSignOut: () => void;
 };
 
-export function Toolbar({
+export const Toolbar = React.memo(function Toolbar({
   notes,
   activeNoteId,
   theme,
@@ -224,8 +224,8 @@ export function Toolbar({
     }
   };
 
-  // Sync status helper functions
-  const getSyncStatusIcon = () => {
+  // Sync status helper functions (memoized)
+  const getSyncStatusIcon = React.useCallback(() => {
     if (!isLoggedIn) {
       return <LogIn className="w-4 h-4 text-blue-500" />;
     }
@@ -259,9 +259,17 @@ export function Toolbar({
       );
     }
     return <Cloud className="w-4 h-4" />;
-  };
+  }, [
+    isLoggedIn,
+    isOnline,
+    isFullSyncing,
+    isSyncing,
+    syncError,
+    pendingSyncs,
+    lastFullSyncTime,
+  ]);
 
-  const getSyncStatusText = () => {
+  const getSyncStatusText = React.useCallback(() => {
     if (!isLoggedIn) {
       return "Sign in to sync";
     }
@@ -281,25 +289,22 @@ export function Toolbar({
       return "Pending sync";
     }
 
-    // Build multi-line status info for signed-in users
-    const lines = [];
-
-    // Last full sync line
-    lines.push(`Last sync: ${getTimeAgo(lastFullSyncTime)}`);
-
-    // Next sync line
-    lines.push(`Next sync: ${getNextSyncInfo()}`);
-
-    // Upload status line
-    if (lastSyncTime) {
-      const uploadAgo = getTimeAgo(lastSyncTime);
-      lines.push(`Upload: ${uploadAgo}`);
-    } else {
-      lines.push(`Upload: Never`);
-    }
-
-    return lines.join(" • ");
-  };
+    // Simplified status text for better performance
+    return `Last sync: ${
+      lastFullSyncTime
+        ? new Date(lastFullSyncTime).toLocaleDateString()
+        : "Never"
+    }`;
+  }, [
+    isLoggedIn,
+    isOnline,
+    isFullSyncing,
+    isSyncing,
+    syncError,
+    pendingSyncs,
+    lastFullSyncTime,
+    lastSyncTime,
+  ]);
 
   return (
     <Card className="fixed bottom-4 right-4 md:bottom-8 md:right-8 shadow-2xl rounded-xl z-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -597,4 +602,4 @@ export function Toolbar({
       </CardContent>
     </Card>
   );
-}
+});
