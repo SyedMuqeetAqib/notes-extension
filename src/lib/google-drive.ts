@@ -1887,6 +1887,80 @@ export async function uploadNotesToDrive(
 }
 
 /**
+ * Upload a single note to Google Drive (optimized for rename operations)
+ * This function only syncs the specified note, not all notes
+ */
+export async function uploadSingleNoteToDrive(note: Note): Promise<void> {
+  console.log("📤 [Google Drive] Starting single note upload...", {
+    noteId: note.id,
+    noteName: note.name,
+    timestamp: new Date().toISOString(),
+  });
+
+  const token = window.gapi?.client?.getToken?.() || window._gapiToken;
+  if (!token) {
+    console.error("❌ [Google Drive] Not signed in - cannot upload");
+    throw new Error("Not signed in");
+  }
+
+  try {
+    let folderId = await getAppFolderId();
+    console.log(
+      "📁 [Google Drive] App folder ID:",
+      folderId ? "Found" : "Not found"
+    );
+
+    if (!folderId) {
+      console.log("📁 [Google Drive] Creating new app folder...");
+      folderId = await createAppFolder();
+      if (!folderId) {
+        console.error("❌ [Google Drive] Failed to create app folder");
+        throw new Error("Could not create app folder in Google Drive.");
+      }
+      console.log(
+        "✅ [Google Drive] App folder created successfully:",
+        folderId
+      );
+    }
+
+    // Get existing note files to find the file ID for this note
+    const existingFiles = await getAllNoteFiles(folderId);
+    const existingFileId = existingFiles.get(note.id);
+
+    console.log("🔄 [Google Drive] Processing single note:", {
+      noteId: note.id,
+      noteName: note.name,
+      isExisting: !!existingFileId,
+      existingFileId: existingFileId,
+    });
+
+    // Save only this note
+    await saveIndividualNote(note, folderId, existingFileId);
+
+    console.log("✅ [Google Drive] Single note upload completed!", {
+      noteId: note.id,
+      noteName: note.name,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error(
+      "❌ [Google Drive] Error uploading single note to drive:",
+      err
+    );
+    const error = err as { result?: { error?: { message: string } } };
+    const errorMessage =
+      error.result?.error?.message ||
+      "An unknown error occurred while uploading to Drive.";
+    console.error("❌ [Google Drive] Error details:", {
+      errorMessage,
+      errorType: typeof err,
+      errorStack: err instanceof Error ? err.stack : undefined,
+    });
+    throw new Error(errorMessage);
+  }
+}
+
+/**
  * Save or update an individual note file
  */
 async function saveIndividualNote(

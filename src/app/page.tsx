@@ -1318,13 +1318,13 @@ export default function Home() {
 
         console.log("✅ [Rename] Note renamed successfully in IndexedDB");
 
-        // Immediately sync rename to Google Drive without debounce
+        // Immediately sync only the renamed note to Google Drive (optimized)
         if (isLoggedIn && !isSyncing) {
           console.log(
             "🔄 [Rename] Immediately syncing renamed note to Google Drive..."
           );
           try {
-            await GoogleDrive.uploadNotesToDrive(updatedNotes);
+            await GoogleDrive.uploadSingleNoteToDrive(updatedNote);
             console.log(
               "✅ [Rename] Note renamed and synced to Google Drive successfully"
             );
