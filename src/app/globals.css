@@ -107,6 +107,17 @@
   .pasted-image-button {
     @apply bg-white/80 hover:bg-white text-black h-8 w-8 inline-flex items-center justify-center rounded-full;
   }
+  /* Scale BlockNote editor to 110% */
+  .blocknote-editor-wrapper {
+    transform: scale(1.10);
+    transform-origin: top left;
+    width: 90.91%; /* Compensate for scale (100% / 1.10 = 90.91%) */
+    height: 90.91%; /* Compensate for scale */
+  }
+  .blocknote-editor-inner {
+    width: 100%;
+    height: 100%;
+  }
 }
 
     

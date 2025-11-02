@@ -1259,10 +1259,77 @@ export async function getTokenFromStorage(): Promise<google.accounts.oauth2.Toke
 }
 
 /**
+ * Check if Chrome identity API has a valid cached token
+ * Returns token response if available, null otherwise
+ */
+export async function checkChromeIdentityToken(): Promise<google.accounts.oauth2.TokenResponse | null> {
+  if (typeof chrome === "undefined" || !chrome.identity) {
+    console.log("🔍 [Chrome Identity] Chrome identity API not available");
+    return null;
+  }
+
+  return new Promise((resolve) => {
+    // Try to get token non-interactively first
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (chrome.runtime.lastError) {
+        console.log(
+          "🔍 [Chrome Identity] No valid Chrome identity token found:",
+          chrome.runtime.lastError.message
+        );
+        resolve(null);
+        return;
+      }
+
+      if (!token) {
+        console.log(
+          "🔍 [Chrome Identity] No token returned from Chrome identity API"
+        );
+        resolve(null);
+        return;
+      }
+
+      console.log("✅ [Chrome Identity] Valid Chrome identity token found");
+      const tokenResponse: google.accounts.oauth2.TokenResponse = {
+        access_token: token,
+        expires_in: 3600, // Chrome tokens typically last 1 hour
+        scope: SCOPES,
+        token_type: "Bearer",
+      };
+      resolve(tokenResponse);
+    });
+  });
+}
+
+/**
  * Check if user is signed in with valid token
+ * First checks stored token, then falls back to Chrome identity API
  */
 export async function isUserSignedIn(): Promise<boolean> {
-  return await SecureAuthManager.isSignedIn();
+  // First check stored token
+  const isSignedInStored = await SecureAuthManager.isSignedIn();
+
+  if (isSignedInStored) {
+    return true;
+  }
+
+  // Stored token expired or missing, check Chrome identity API
+  console.log(
+    "🔍 [Auth Check] Stored token expired/missing, checking Chrome identity API..."
+  );
+  const chromeToken = await checkChromeIdentityToken();
+
+  if (chromeToken) {
+    // Chrome has a valid token - refresh our stored token
+    console.log(
+      "✅ [Auth Check] Chrome has valid token, refreshing stored token..."
+    );
+    await saveTokenToStorage(chromeToken);
+    setToken(chromeToken);
+    return true;
+  }
+
+  // No token available
+  return false;
 }
 
 /**
