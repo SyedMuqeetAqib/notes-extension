@@ -118,6 +118,20 @@
     width: 100%;
     height: 100%;
   }
+ 
+  /* BlockNote checkbox list item styling - add horizontal padding */
+  .bn-block-content[data-content-type="checkListItem"] input[type="checkbox"],
+  [data-content-type="checkListItem"] input[type="checkbox"],
+  .bn-check-list-item input[type="checkbox"],
+  /* More generic selectors to catch BlockNote checkboxes */
+  .bn-editor input[type="checkbox"],
+  div[data-node-type="checkListItem"] input[type="checkbox"],
+  /* Target checkbox container for additional spacing */
+  [data-content-type="checkListItem"] > label input[type="checkbox"],
+  [data-content-type="checkListItem"] label > input[type="checkbox"] {
+    margin-right: 10px !important;
+    margin-left: 4px !important;
+  }
 }
 
     
