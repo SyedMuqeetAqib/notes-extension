@@ -1,0 +1,40 @@
+Google Drive Sync Test Data
+============================
+
+This is a test file to verify that the Google Drive sync functionality is working properly.
+
+Test Content:
+- Sample note with formatted text
+- Multiple paragraphs
+- Bullet points
+- Headings and subheadings
+
+Expected JSON Structure:
+{
+  "notes": [
+    {
+      "id": "test-note-1234567890",
+      "name": "Test Note - Google Drive Sync",
+      "content": "[BlockNote JSON blocks with formatted content]",
+      "createdAt": 1234567890000,
+      "lastUpdatedAt": 1234567890000
+    }
+  ],
+  "syncMetadata": {
+    "lastSync": 1234567890000,
+    "version": "1.0",
+    "appVersion": "tabula-notes-v1"
+  }
+}
+
+Instructions:
+1. Sign in to Google Drive in the app
+2. Use the "Test Sync with Sample Data" button
+3. Check the browser console for detailed logging
+4. Verify the tabula-notes.json file in Google Drive contains data
+
+If this test works, the sync mechanism is functional.
+If it doesn't work, there's an issue with the Google Drive API integration.
+
+Timestamp: 2024-12-19
+Test ID: sync-test-001

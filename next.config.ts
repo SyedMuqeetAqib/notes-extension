@@ -26,7 +26,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { isServer }) => {
+  // Production optimizations
+  compress: true,
+  poweredByHeader: false,
+  reactStrictMode: true,
+  // Optimize bundle splitting
+  webpack: (config, { isServer, dev }) => {
+    // Production-only optimizations
+    if (!dev && !isServer) {
+      // Enable minification
+      config.optimization = {
+        ...config.optimization,
+        minimize: true,
+      };
+    }
     // Handle optional dependencies that may not be installed
     config.resolve.fallback = {
       ...config.resolve.fallback,
@@ -34,6 +47,15 @@ const nextConfig: NextConfig = {
       "@opentelemetry/exporter-jaeger": false,
       "@genkit-ai/firebase": false,
     };
+
+    // Tree-shaking optimizations
+    if (!isServer) {
+      config.optimization = {
+        ...config.optimization,
+        usedExports: true,
+        sideEffects: false,
+      };
+    }
 
     // Handle handlebars webpack compatibility
     config.module.rules.push({

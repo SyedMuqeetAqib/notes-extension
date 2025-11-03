@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Test GAPI Fix</title>
+  </head>
+  <body>
+    <h1>Testing GAPI Fix for Chrome Extension</h1>
+    <div id="status">Loading...</div>
+    <button id="testBtn">Test GAPI</button>
+
+    <script>
+      // Simulate the Chrome extension environment
+      console.log("🧪 Testing GAPI fix...");
+
+      // Load the Google Drive script
+      const script = document.createElement("script");
+      script.src = "src/lib/google-drive.ts";
+      script.type = "module";
+
+      script.onload = () => {
+        console.log("✅ Script loaded");
+        document.getElementById("status").textContent =
+          "Script loaded successfully";
+      };
+
+      script.onerror = () => {
+        console.error("❌ Script failed to load");
+        document.getElementById("status").textContent = "Script failed to load";
+      };
+
+      document.head.appendChild(script);
+
+      // Test button
+      document.getElementById("testBtn").addEventListener("click", async () => {
+        try {
+          // This would normally be imported from the module
+          console.log("🔄 Testing GAPI availability...");
+
+          if (typeof window.gapi !== "undefined") {
+            console.log("✅ GAPI is available");
+            document.getElementById("status").textContent =
+              "GAPI is available!";
+          } else {
+            console.log("❌ GAPI is not available");
+            document.getElementById("status").textContent =
+              "GAPI is not available";
+          }
+        } catch (error) {
+          console.error("❌ Test failed:", error);
+          document.getElementById("status").textContent =
+            "Test failed: " + error.message;
+        }
+      });
+    </script>
+  </body>
+</html>

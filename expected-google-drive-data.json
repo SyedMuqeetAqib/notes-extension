@@ -1,0 +1,16 @@
+{
+    "notes": [
+        {
+            "id": "simple-test-1703001234567",
+            "name": "Simple Test Note",
+            "content": "[{\"id\":\"1\",\"type\":\"paragraph\",\"props\":{},\"content\":[{\"type\":\"text\",\"text\":\"This is a simple test note to verify Google Drive sync is working.\",\"styles\":{}}],\"children\":[]}]",
+            "createdAt": 1703001234567,
+            "lastUpdatedAt": 1703001234567
+        }
+    ],
+    "syncMetadata": {
+        "lastSync": 1703001234567,
+        "version": "1.0",
+        "appVersion": "tabula-notes-v1"
+    }
+}

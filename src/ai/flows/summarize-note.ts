@@ -3,39 +3,37 @@
  * @fileOverview A note summarization AI agent.
  *
  * - summarizeNote - A function that handles the note summarization process.
- * - SummarizeNoteInput - The input type for the summarizeNote function.
- * - SummarizeNoteOutput - The return type for the summarizeNote function.
  */
 
-export interface SummarizeNoteInput {
-  note: string;
-}
+import { SummarizeNoteInput, SummarizeNoteOutput } from "./summarize-note.dtos";
 
-export interface SummarizeNoteOutput {
-  summary: string;
-}
-
+// For static export, we'll use a simple client-side summarization approach
+// This is a placeholder implementation that can be replaced with actual AI integration
 export async function summarizeNote(
   input: SummarizeNoteInput
 ): Promise<SummarizeNoteOutput> {
   try {
-    // For static export, we'll use a simple client-side summarization
-    // This is a basic implementation - you may want to integrate with a client-side AI service
-    const { note } = input;
+    // Simple text summarization logic for static export
+    const text = input.note;
+    const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
 
-    // Simple summarization logic for demonstration
-    // In a real implementation, you'd want to use a client-side AI library or API
-    const sentences = note.split(/[.!?]+/).filter((s) => s.trim().length > 0);
-    const keyPoints = sentences.slice(0, 3).map((s) => s.trim());
+    if (sentences.length <= 3) {
+      return {
+        summary: text.substring(0, 200) + (text.length > 200 ? "..." : ""),
+      };
+    }
 
-    const summary =
-      keyPoints.length > 0
-        ? `Key points:\n${keyPoints
-            .map((point, i) => `${i + 1}. ${point}`)
-            .join("\n")}`
-        : "Note is too short to summarize meaningfully.";
+    // Take first few sentences as summary
+    const summarySentences = sentences.slice(
+      0,
+      Math.min(3, Math.ceil(sentences.length / 3))
+    );
+    const summary = summarySentences.join(". ").trim() + ".";
 
-    return { summary };
+    return {
+      summary:
+        summary.length > 300 ? summary.substring(0, 300) + "..." : summary,
+    };
   } catch (error) {
     console.error("Failed to summarize note:", error);
     return {

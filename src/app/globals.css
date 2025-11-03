@@ -1,10 +1,11 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 220 17% 95%;
+    --background: 0 0% 100%;
     --foreground: 224 71% 4%;
     --card: 0 0% 100%;
     --card-foreground: 224 71% 4%;
@@ -26,24 +27,24 @@
     --radius: 0.75rem;
   }
   .dark {
-    --background: 224 71% 4%;
+    --background: 0 0% 10%;
     --foreground: 210 40% 98%;
-    --card: 224 71% 10%;
+    --card: 0 0% 14%;
     --card-foreground: 210 40% 98%;
-    --popover: 224 71% 10%;
+    --popover: 0 0% 14%;
     --popover-foreground: 210 40% 98%;
     --primary: 215 58% 79%;
     --primary-foreground: 224 71% 4%;
-    --secondary: 215 28% 17%;
+    --secondary: 0 0% 18%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 215 28% 17%;
+    --muted: 0 0% 18%;
     --muted-foreground: 215 20% 65%;
     --accent: 276 26% 70%;
     --accent-foreground: 224 71% 4%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
+    --border: 0 0% 20%;
+    --input: 0 0% 18%;
     --ring: 215 58% 79%;
     --radius: 0.75rem;
   }
@@ -56,15 +57,6 @@
   body {
     @apply bg-background text-foreground;
   }
-  h1 {
-    @apply text-4xl font-bold;
-  }
-  h2 {
-    @apply text-3xl font-semibold;
-  }
-  h3 {
-    @apply text-2xl font-semibold;
-  }
   .checklist-item {
     @apply flex items-center my-2;
   }
@@ -74,4 +66,72 @@
   .checklist-item > div {
     @apply flex-grow;
   }
+  .editor-content h1, .editor-content h2, .editor-content h3 {
+    @apply my-4;
+  }
+  .editor-content h1 {
+    @apply text-4xl font-bold;
+  }
+  .editor-content h2 {
+    @apply text-3xl font-semibold;
+  }
+  .editor-content h3 {
+    @apply text-2xl font-semibold;
+  }
+  .pasted-image-wrapper {
+    @apply block my-4;
+    position: relative;
+    cursor: text;
+  }
+  .pasted-image-wrapper:empty::after {
+    content: '\200B'; /* Zero-width space to allow cursor placement */
+  }
+  .pasted-image-wrapper:focus {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  .pasted-image-container {
+    @apply relative inline-block;
+    pointer-events: none;
+  }
+  .pasted-image-container .pasted-image-overlay {
+    pointer-events: auto;
+  }
+  .pasted-image {
+    max-width: 100%;
+    @apply rounded-lg shadow-md border block w-auto h-auto;
+  }
+  .pasted-image-overlay {
+    @apply absolute inset-0 bg-black/50 opacity-0 transition-opacity group-hover:opacity-100 flex items-center justify-center rounded-lg;
+  }
+  .pasted-image-button {
+    @apply bg-white/80 hover:bg-white text-black h-8 w-8 inline-flex items-center justify-center rounded-full;
+  }
+  /* Scale BlockNote editor to 110% */
+  .blocknote-editor-wrapper {
+    transform: scale(1.10);
+    transform-origin: top left;
+    width: 90.91%; /* Compensate for scale (100% / 1.10 = 90.91%) */
+    height: 90.91%; /* Compensate for scale */
+  }
+  .blocknote-editor-inner {
+    width: 100%;
+    height: 100%;
+  }
+ 
+  /* BlockNote checkbox list item styling - add horizontal padding */
+  .bn-block-content[data-content-type="checkListItem"] input[type="checkbox"],
+  [data-content-type="checkListItem"] input[type="checkbox"],
+  .bn-check-list-item input[type="checkbox"],
+  /* More generic selectors to catch BlockNote checkboxes */
+  .bn-editor input[type="checkbox"],
+  div[data-node-type="checkListItem"] input[type="checkbox"],
+  /* Target checkbox container for additional spacing */
+  [data-content-type="checkListItem"] > label input[type="checkbox"],
+  [data-content-type="checkListItem"] label > input[type="checkbox"] {
+    margin-right: 10px !important;
+    margin-left: 4px !important;
+  }
 }
+
+    
