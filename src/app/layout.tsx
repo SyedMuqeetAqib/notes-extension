@@ -1,9 +1,14 @@
-import type {Metadata} from 'next';
-import './globals.css';
+import type { Metadata } from "next";
+import "./globals.css";
 
 export const metadata: Metadata = {
-  title: 'TabulaNote',
-  description: 'A new tab for your thoughts.',
+  title: "TabulaNote",
+  description: "A new tab for your thoughts.",
+  icons: {
+    icon: "/icons/icon48.png",
+    shortcut: "/icons/icon48.png",
+    apple: "/icons/icon48.png",
+  },
 };
 
 export default function RootLayout({
@@ -13,11 +18,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <link rel="icon" href="/icons/icon16.png" sizes="16x16" />
-        <link rel="icon" href="/icons/icon48.png" sizes="48x48" />
-        <link rel="icon" href="/icons/icon128.png" sizes="128x128" />
-      </head>
       <body className="font-body antialiased">{children}</body>
     </html>
   );
