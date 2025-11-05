@@ -5,9 +5,9 @@ export const metadata: Metadata = {
   title: "TabulaNote",
   description: "A new tab for your thoughts.",
   icons: {
-    icon: "/icons/icon48.png",
-    shortcut: "/icons/icon48.png",
-    apple: "/icons/icon48.png",
+    icon: "/icons/icon128.png",
+    shortcut: "/icons/icon128.png",
+    apple: "/icons/icon128.png",
   },
 };
 
