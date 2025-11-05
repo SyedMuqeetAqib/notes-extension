@@ -76,15 +76,11 @@ const SelectContent = React.forwardRef<
       ref={ref}
       className={cn(
         "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl border-[1.5px] shadow-2xl backdrop-blur-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+        "bg-[rgba(242,242,233,0.75)] dark:bg-[rgba(36,36,36,0.95)] border-[rgba(224,224,208,0.5)] dark:border-[rgba(58,58,58,0.7)] text-[rgba(60,60,50,0.9)] dark:text-gray-200",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className
       )}
-      style={{
-        backgroundColor: "rgba(242, 242, 233, 0.75)",
-        borderColor: "rgba(224, 224, 208, 0.5)",
-        color: "rgba(60, 60, 50, 0.9)",
-      }}
       position={position}
       {...props}
     >
@@ -124,23 +120,9 @@ const SelectItem = React.forwardRef<
     ref={ref}
     className={cn(
       "relative flex w-full cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "text-[rgba(60,60,50,0.9)] dark:text-gray-200 hover:bg-[rgba(232,232,216,0.85)] dark:hover:bg-[rgba(51,51,51,0.9)] focus:bg-[rgba(232,232,216,0.85)] dark:focus:bg-[rgba(51,51,51,0.9)]",
       className
     )}
-    style={{
-      color: "rgba(60, 60, 50, 0.9)",
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.backgroundColor = "rgba(232, 232, 216, 0.85)";
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.backgroundColor = "transparent";
-    }}
-    onFocus={(e) => {
-      e.currentTarget.style.backgroundColor = "rgba(232, 232, 216, 0.85)";
-    }}
-    onBlur={(e) => {
-      e.currentTarget.style.backgroundColor = "transparent";
-    }}
     {...props}
   >
     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">

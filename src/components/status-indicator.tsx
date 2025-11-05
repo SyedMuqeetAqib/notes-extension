@@ -33,6 +33,7 @@ type StatusIndicatorProps = {
   lastSyncTime: number | null;
   lastFullSyncTime: number | null;
   isGoogleSDKInitialized: boolean;
+  needsDailySync?: boolean;
   onSyncClick?: () => void;
   onSignInClick?: () => void;
   onSignOutClick?: () => void;
@@ -51,6 +52,7 @@ export const StatusIndicator = React.memo(function StatusIndicator({
   lastSyncTime,
   lastFullSyncTime,
   isGoogleSDKInitialized,
+  needsDailySync = false,
   onSyncClick,
   onSignInClick,
   onSignOutClick,
@@ -67,6 +69,18 @@ export const StatusIndicator = React.memo(function StatusIndicator({
         textColor: "text-blue-700",
         borderColor: "border-blue-200",
         iconColor: "text-blue-600",
+      };
+    }
+
+    // Show "Sync now" prominently if sync is needed today (after midnight)
+    if (needsDailySync && isLoggedIn && !isFullSyncing && !isSyncing && !syncError) {
+      return {
+        icon: <RefreshCw className="w-4 h-4" />,
+        text: "Sync now",
+        bgColor: "bg-yellow-50",
+        textColor: "text-yellow-700",
+        borderColor: "border-yellow-200",
+        iconColor: "text-yellow-600",
       };
     }
 

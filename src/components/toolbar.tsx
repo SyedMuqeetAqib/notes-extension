@@ -479,17 +479,77 @@ export const Toolbar = React.memo(function Toolbar({
     lastSyncTime,
   ]);
 
-  // Get active styles for button states - using useMemo for reactivity
-  const activeStyles = React.useMemo(() => {
+  // Get active styles for button states - using useState and updating on editor changes
+  const [activeStyles, setActiveStyles] = React.useState<
+    Record<string, boolean>
+  >({});
+
+  // Update active styles when editor selection or content changes
+  React.useEffect(() => {
     const editor = editorRef.current?.getEditor();
-    if (editor) {
-      try {
-        return editor.getActiveStyles();
-      } catch (error) {
-        return {};
-      }
+    if (!editor) {
+      setActiveStyles({});
+      return;
     }
-    return {};
+
+    // Function to update active styles
+    const updateActiveStyles = () => {
+      try {
+        const styles = editor.getActiveStyles();
+        setActiveStyles(styles || {});
+      } catch (error) {
+        setActiveStyles({});
+      }
+    };
+
+    // Update immediately
+    updateActiveStyles();
+
+    // Listen to editor transaction/update events via TipTap
+    // TipTap editors fire 'update' events on every transaction
+    const tiptapEditor = editor._tiptapEditor;
+    let intervalId: NodeJS.Timeout | null = null;
+
+    if (tiptapEditor) {
+      // Listen for selection changes and content updates
+      const handleUpdate = () => {
+        updateActiveStyles();
+      };
+
+      // TipTap emits 'update' and 'selectionUpdate' events
+      tiptapEditor.on("update", handleUpdate);
+      tiptapEditor.on("selectionUpdate", handleUpdate);
+
+      // Also listen to focus/blur to update when editor gains/loses focus
+      const editorDOM = tiptapEditor.view.dom;
+      const handleFocus = () => updateActiveStyles();
+      const handleBlur = () => updateActiveStyles();
+      const handleMouseUp = () => updateActiveStyles();
+      const handleKeyUp = () => updateActiveStyles();
+
+      editorDOM.addEventListener("focus", handleFocus);
+      editorDOM.addEventListener("blur", handleBlur);
+      editorDOM.addEventListener("mouseup", handleMouseUp);
+      editorDOM.addEventListener("keyup", handleKeyUp);
+
+      return () => {
+        tiptapEditor.off("update", handleUpdate);
+        tiptapEditor.off("selectionUpdate", handleUpdate);
+        editorDOM.removeEventListener("focus", handleFocus);
+        editorDOM.removeEventListener("blur", handleBlur);
+        editorDOM.removeEventListener("mouseup", handleMouseUp);
+        editorDOM.removeEventListener("keyup", handleKeyUp);
+        if (intervalId) clearInterval(intervalId);
+      };
+    } else {
+      // Fallback: Poll for changes if TipTap events aren't available
+      // This ensures we catch changes even if event listeners aren't working
+      intervalId = setInterval(updateActiveStyles, 100);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [editorRef]);
 
   // Floating maximize button when minimized

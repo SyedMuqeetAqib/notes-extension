@@ -508,21 +508,33 @@ export default function Home() {
 
             console.log("✅ [Sync] Full sync completed:", {
               notesCount: syncResult.notes.length,
+              currentNotesCount: notes.length,
             });
 
-            // Update local state with synced notes
-            setNotes(syncResult.notes);
+            // Safety check: Don't overwrite with fewer notes unless we're sure
+            if (syncResult.notes.length > 0 || notes.length === 0) {
+              // Update local state with synced notes
+              setNotes(syncResult.notes);
 
-            // Set active note (try to restore from localStorage first)
-            const lastActiveNoteId = localStorage.getItem(
-              "tabula-last-active-note"
-            );
-            const activeNote =
-              syncResult.notes.find((n) => n.id === lastActiveNoteId) ||
-              syncResult.notes[0];
-            if (activeNote) {
-              setActiveNoteId(activeNote.id);
-              localStorage.setItem("tabula-last-active-note", activeNote.id);
+              // Set active note (try to restore from localStorage first)
+              const lastActiveNoteId = localStorage.getItem(
+                "tabula-last-active-note"
+              );
+              const activeNote =
+                syncResult.notes.find((n) => n.id === lastActiveNoteId) ||
+                syncResult.notes[0];
+              if (activeNote) {
+                setActiveNoteId(activeNote.id);
+                localStorage.setItem("tabula-last-active-note", activeNote.id);
+              }
+            } else {
+              console.warn(
+                "⚠️ [Sync] Sync returned empty notes but current notes exist. Keeping current notes.",
+                {
+                  syncResultCount: syncResult.notes.length,
+                  currentNotesCount: notes.length,
+                }
+              );
             }
 
             // Update last full sync time
@@ -532,6 +544,11 @@ export default function Home() {
               "tabula-last-full-sync",
               fullSyncTime.toString()
             );
+
+            // Mark today as synced for daily sync tracking
+            const today = new Date().toDateString();
+            localStorage.setItem("tabula-last-daily-sync", today);
+            setNeedsDailySync(false);
 
             // Auto-close modal after 2 seconds and show success toast
             setTimeout(() => {
@@ -1834,50 +1851,43 @@ export default function Home() {
     };
   }, [isLoggedIn, lastFullSyncTime, toast]);
 
-  // Daily auto-sync system - syncs once per day after midnight when app loads
-  React.useEffect(() => {
-    if (!isLoggedIn || !isGapiLoaded) return;
+  // Daily sync status tracking - checks if sync is needed but doesn't auto-trigger
+  // StatusIndicator will show "Sync now" prompt if sync is needed
+  const [needsDailySync, setNeedsDailySync] = React.useState(false);
 
-    const performDailyAutoSync = async () => {
+  React.useEffect(() => {
+    // Check if sync is needed (after midnight, hasn't synced today)
+    const checkSyncNeeded = () => {
       const now = new Date();
       const today = now.toDateString(); // e.g., "Mon Jan 01 2024"
       const lastSyncDate = localStorage.getItem("tabula-last-daily-sync");
-
-      // Check if we haven't synced today (date changes at midnight automatically)
       const hasSyncedToday = lastSyncDate === today;
+      const syncNeeded = !hasSyncedToday;
 
-      if (!hasSyncedToday) {
-        console.log("🔄 [Daily Auto-Sync] Starting automatic daily sync...", {
-          currentTime: now.toISOString(),
-          today,
-          lastSyncDate,
-          hasSyncedToday,
-        });
+      setNeedsDailySync(syncNeeded);
 
-        try {
-          // Trigger full sync using existing sync flow (shows modal, disables UI)
-          await handleCloudSync(false, true, false); // showToast=false, isAutoSync=true, uploadOnly=false
-
-          // Mark today as synced
-          localStorage.setItem("tabula-last-daily-sync", today);
-
-          console.log("✅ [Daily Auto-Sync] Daily sync completed successfully");
-        } catch (error) {
-          console.error("❌ [Daily Auto-Sync] Daily sync failed:", error);
-          // Error handling is already managed by handleCloudSync
-        }
-      } else {
-        console.log("⏭️ [Daily Auto-Sync] Skipping daily sync", {
-          hasSyncedToday,
-          today,
-          lastSyncDate,
-        });
+      if (syncNeeded) {
+        console.log(
+          "📅 [Daily Sync] Sync needed today - showing Sync now prompt",
+          {
+            currentTime: now.toISOString(),
+            today,
+            lastSyncDate,
+          }
+        );
       }
     };
 
-    // Run once when component mounts and dependencies are ready
-    performDailyAutoSync();
-  }, [isLoggedIn, isGapiLoaded, handleCloudSync]);
+    // Check immediately
+    checkSyncNeeded();
+
+    // Check every minute to update status after midnight
+    const intervalId = setInterval(checkSyncNeeded, 60000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, []);
 
   const activeNote = notes.find((n) => n.id === activeNoteId);
   // Memoize date formatting
@@ -2085,6 +2095,7 @@ export default function Home() {
               lastSyncTime={lastSyncTime}
               lastFullSyncTime={lastFullSyncTime}
               isGoogleSDKInitialized={isGoogleSDKInitialized}
+              needsDailySync={needsDailySync}
               onSyncClick={handleCloudSync}
               onSignInClick={handleSignIn}
               onSignOutClick={handleSignOut}
