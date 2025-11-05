@@ -36,9 +36,17 @@ import {
   handleErrorWithToast,
   QuotaManager,
 } from "@/lib/error-handling";
-import BlockNoteEditor, {
-  type BlockNoteEditorRef,
-} from "./BlockNoteEditor/blocknote";
+// Lazy load BlockNoteEditor - it's heavy with BlockNote libraries
+// Load it only when we have an active note to display
+const BlockNoteEditor = dynamic(() => import("./BlockNoteEditor/blocknote"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </div>
+  ),
+});
+import type { BlockNoteEditorRef } from "./BlockNoteEditor/blocknote";
 
 // Sync progress types
 type SyncStatus = "syncing" | "complete" | "error";
@@ -211,12 +219,12 @@ const getInitialState = () => {
     return {
       activeNoteId: null,
       notes: [],
-      theme: "light",
+      theme: "dark",
       characterCount: 0,
     };
   }
   try {
-    const theme = localStorage.getItem("tabula-theme") || "light";
+    const theme = localStorage.getItem("tabula-theme") || "dark";
 
     // For now, return empty state - we'll load from IndexedDB in useEffect
     // This prevents hydration mismatches
@@ -231,7 +239,7 @@ const getInitialState = () => {
     return {
       activeNoteId: null,
       notes: [],
-      theme: "light",
+      theme: "dark",
       characterCount: 0,
     };
   }
@@ -613,8 +621,8 @@ export default function Home() {
   // Track if initial sync has been performed
   const initialSyncDoneRef = React.useRef(false);
 
+  // Set client state and theme immediately
   React.useEffect(() => {
-    // This effect runs once on mount to set the initial client state
     setIsClient(true);
     const state = initialStateRef.current;
     document.documentElement.classList.toggle("dark", state.theme === "dark");
@@ -624,22 +632,28 @@ export default function Home() {
     if (storedLastFullSync) {
       setLastFullSyncTime(parseInt(storedLastFullSync, 10));
     }
+  }, []);
 
-    // Expose debug functions to window for console access
-    (window as any).debugGoogleDrive = {
-      testAPI: GoogleDrive.debugTestDriveAPI,
-      basicAPI: GoogleDrive.debugBasicAPI,
-      listFiles: GoogleDrive.debugListDriveFiles,
-      clearCache: GoogleDrive.clearDriveCache,
-      createTestNote: GoogleDrive.createTestNote,
-      createSimpleTestNote: GoogleDrive.createSimpleTestNote,
-      createTestNoteWithContent: GoogleDrive.createTestNoteWithContent,
-      uploadFlow: GoogleDrive.debugUploadFlow,
-      simpleSync: GoogleDrive.simpleSync,
-    };
+  // Initialize Google Drive API - deferred until IndexedDB is ready
+  // This allows the UI to show faster by not blocking on Google Drive initialization
+  React.useEffect(() => {
+    if (!isIndexedDBReady) return; // Wait for IndexedDB to be ready
 
-    // Initialize Google Drive API
     const initDrive = async () => {
+      // Expose debug functions to window for console access
+      (window as any).debugGoogleDrive = {
+        testAPI: GoogleDrive.debugTestDriveAPI,
+        basicAPI: GoogleDrive.debugBasicAPI,
+        listFiles: GoogleDrive.debugListDriveFiles,
+        clearCache: GoogleDrive.clearDriveCache,
+        createTestNote: GoogleDrive.createTestNote,
+        createSimpleTestNote: GoogleDrive.createSimpleTestNote,
+        createTestNoteWithContent: GoogleDrive.createTestNoteWithContent,
+        uploadFlow: GoogleDrive.debugUploadFlow,
+        simpleSync: GoogleDrive.simpleSync,
+      };
+
+      // Initialize Google Drive API
       try {
         await GoogleDrive.loadGapi();
 
@@ -703,8 +717,9 @@ export default function Home() {
         setIsGoogleSDKInitialized(true);
       }
     };
+
     initDrive();
-  }, [toast]);
+  }, [toast, isIndexedDBReady]); // Wait for IndexedDB to be ready
 
   // Periodic token refresh to maintain sign-in persistence
   React.useEffect(() => {
@@ -1923,7 +1938,7 @@ export default function Home() {
 
   if (!isClient || isLoadingNotes) {
     return (
-      <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
+      <main className="relative min-h-screen text-foreground font-body transition-colors duration-300 bg-[rgba(242,242,233,1)] dark:bg-[hsl(0,0%,15%)]">
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
@@ -1938,43 +1953,52 @@ export default function Home() {
 
   return (
     <TooltipProvider delayDuration={100}>
-      <main className="relative min-h-screen bg-background text-foreground font-body transition-colors duration-300">
+      <main className="relative min-h-screen text-foreground font-body transition-colors duration-300 bg-[rgba(242,242,233,1)] dark:bg-[hsl(0,0%,15%)]">
         {/* Full Sync Loading Overlay */}
         {isFullSyncing && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="flex flex-col items-center gap-4 rounded-lg bg-card p-8 shadow-lg border max-w-lg w-full mx-4">
-              <Loader2 className="w-12 h-12 animate-spin text-primary" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm bg-[rgba(242,242,233,0.9)] dark:bg-[rgba(21,21,21,0.9)]">
+            <div className="flex flex-col items-center gap-6 rounded-xl p-8 shadow-2xl max-w-lg w-full mx-4 border-[1.5px] bg-[rgba(242,242,233,0.98)] dark:bg-[rgba(36,36,36,0.98)] border-[rgba(224,224,208,0.5)] dark:border-[rgba(58,58,58,0.7)]">
               <div className="text-center w-full">
-                <h3 className="text-lg font-semibold mb-2">
-                  Syncing with Google Drive
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Please wait while we fetch and merge your notes...
-                </p>
+                <div className="flex flex-col items-center gap-3 mb-6">
+                  <Loader2 className="w-12 h-12 animate-spin text-[rgba(80,80,70,0.8)] dark:text-gray-400" />
+                  <h3 className="text-xl font-semibold text-[rgba(60,60,50,0.9)] dark:text-gray-200">
+                    Syncing with Google Drive
+                  </h3>
+                  <p className="text-sm text-[rgba(100,100,90,0.8)] dark:text-gray-300">
+                    Please wait while we fetch and merge your notes...
+                  </p>
+                </div>
 
                 {/* Progress List */}
                 {syncProgress.length > 0 && (
-                  <div className="max-h-64 overflow-y-auto border rounded-lg p-4 bg-muted/30">
+                  <div className="max-h-64 overflow-y-auto rounded-lg p-4 mb-4 border-[1.5px] bg-[rgba(240,240,224,0.6)] dark:bg-[rgba(40,40,40,0.6)] border-[rgba(208,208,192,0.4)] dark:border-[rgba(58,58,58,0.5)]">
                     <div className="space-y-2">
                       {syncProgress.map((item) => (
                         <div
                           key={item.noteId}
-                          className="flex items-center gap-3 py-2"
+                          className={cn(
+                            "flex items-center gap-3 py-2 px-2 rounded-md transition-colors hover:bg-opacity-50",
+                            item.status === "complete"
+                              ? "bg-[rgba(200,240,200,0.3)] dark:bg-[rgba(34,197,94,0.2)]"
+                              : item.status === "error"
+                              ? "bg-[rgba(240,200,200,0.3)] dark:bg-[rgba(239,68,68,0.2)]"
+                              : "bg-[rgba(255,255,255,0.2)] dark:bg-[rgba(255,255,255,0.1)]"
+                          )}
                         >
                           <div className="flex-shrink-0">
                             {item.status === "complete" ? (
-                              <CheckCircle className="w-5 h-5 text-green-500" />
+                              <CheckCircle className="w-5 h-5 text-[rgba(34,197,94,0.9)] dark:text-green-400" />
                             ) : item.status === "error" ? (
-                              <AlertCircle className="w-5 h-5 text-red-500" />
+                              <AlertCircle className="w-5 h-5 text-[rgba(239,68,68,0.9)] dark:text-red-400" />
                             ) : (
-                              <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                              <Loader2 className="w-5 h-5 animate-spin text-[rgba(80,80,70,0.8)] dark:text-gray-400" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium truncate">
+                            <p className="text-sm font-medium truncate text-[rgba(60,60,50,0.9)] dark:text-gray-200">
                               {item.noteName}
                             </p>
-                            <p className="text-xs text-muted-foreground capitalize">
+                            <p className="text-xs capitalize text-[rgba(100,100,90,0.7)] dark:text-gray-400">
                               {item.status === "syncing" && "Syncing..."}
                               {item.status === "complete" && "Complete"}
                               {item.status === "error" && "Error"}
@@ -1986,31 +2010,31 @@ export default function Home() {
                   </div>
                 )}
 
-                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
-                  <p className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                <div className="mt-4 p-4 rounded-lg border-[1.5px] bg-[rgba(248,244,232,0.7)] dark:bg-[rgba(42,42,42,0.7)] border-[rgba(216,208,184,0.5)] dark:border-[rgba(58,58,58,0.6)]">
+                  <p className="text-xs font-medium mb-2 text-[rgba(120,100,80,0.95)] dark:text-gray-300">
                     ℹ️ Note: Images will not sync
                   </p>
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                  <p className="text-xs mt-1 text-[rgba(100,90,80,0.85)] dark:text-gray-400">
                     Visit{" "}
                     <a
                       href="https://tabulanotes.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="underline hover:text-blue-800 dark:hover:text-blue-200 transition-colors"
+                      className="underline transition-colors hover:opacity-80 text-[rgba(140,120,100,0.9)] dark:text-gray-300"
                     >
                       tabulanotes.com
                     </a>{" "}
                     for feature requests and feedback
                   </p>
                 </div>
-                <p className="text-xs text-muted-foreground mt-2">
+                <p className="text-xs mt-4 text-[rgba(100,100,90,0.7)] dark:text-gray-400">
                   Do not close this window
                 </p>
               </div>
             </div>
           </div>
         )}
-        <div className="fixed top-0 left-0 right-0 h-12 flex justify-between items-center z-50 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4">
+        <div className="fixed top-0 left-0 right-0 h-12 flex justify-between items-center z-50 px-4 bg-[rgba(242,242,233,1)] dark:bg-[hsl(0,0%,15%)] transition-colors duration-300">
           <div className="flex-1"></div>
           <div className="flex-1 flex justify-center items-center group">
             {isClient && activeNote && (

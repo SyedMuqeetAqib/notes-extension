@@ -18,6 +18,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script src="/theme-init.js" />
+      </head>
       <body className="font-body antialiased">{children}</body>
     </html>
   );

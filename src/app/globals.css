@@ -5,7 +5,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    --background: 60 20% 95%; /* Warm beige background matching toolbar theme */
     --foreground: 224 71% 4%;
     --card: 0 0% 100%;
     --card-foreground: 224 71% 4%;
@@ -17,8 +17,8 @@
     --secondary-foreground: 224 71% 4%;
     --muted: 220 13% 91%;
     --muted-foreground: 220 9% 46%;
-    --accent: 276 26% 56%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 220 18% 88%;
+    --accent-foreground: 224 71% 4%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
     --border: 220 13% 84%;
@@ -27,11 +27,11 @@
     --radius: 0.75rem;
   }
   .dark {
-    --background: 0 0% 10%;
+    --background: 0 0% 15%;
     --foreground: 210 40% 98%;
-    --card: 0 0% 14%;
+    --card: 0 0% 14.1%; /* #242424 */
     --card-foreground: 210 40% 98%;
-    --popover: 0 0% 14%;
+    --popover: 0 0% 14.1%; /* #242424 */
     --popover-foreground: 210 40% 98%;
     --primary: 215 58% 79%;
     --primary-foreground: 224 71% 4%;
@@ -39,12 +39,12 @@
     --secondary-foreground: 210 40% 98%;
     --muted: 0 0% 18%;
     --muted-foreground: 215 20% 65%;
-    --accent: 276 26% 70%;
-    --accent-foreground: 224 71% 4%;
+    --accent: 0 0% 20%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 63% 31%;
     --destructive-foreground: 210 40% 98%;
-    --border: 0 0% 20%;
-    --input: 0 0% 18%;
+    --border: 0 0% 25%;
+    --input: 0 0% 20%;
     --ring: 215 58% 79%;
     --radius: 0.75rem;
   }
@@ -54,8 +54,23 @@
   * {
     @apply border-border;
   }
+  html {
+    /* Always show scrollbar to prevent layout shift when dropdowns open */
+    overflow-y: scroll;
+    /* Modern browsers: reserve scrollbar space without showing it when not needed */
+    scrollbar-gutter: stable;
+  }
   body {
     @apply bg-background text-foreground;
+    background-color: rgba(242, 242, 233, 1); /* Warm beige background matching toolbar */
+    transition: background-color 300ms ease;
+    /* Remove overflow from body to prevent double scrollbar - html handles scrolling */
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+  }
+  .dark body {
+    background-color: hsl(0, 0%, 15%); /* Dark blackish grey background */
   }
   .checklist-item {
     @apply flex items-center my-2;
@@ -113,10 +128,36 @@
     transform-origin: top left;
     width: 90.91%; /* Compensate for scale (100% / 1.10 = 90.91%) */
     height: 90.91%; /* Compensate for scale */
+    background-color: transparent; /* Transparent to use app body background */
+    transition: background-color 300ms ease;
   }
   .blocknote-editor-inner {
     width: 100%;
     height: 100%;
+    transition: background-color 300ms ease;
+  }
+  
+  /* BlockNote editor content area transitions - ensure all editor elements transition together */
+  .bn-editor,
+  .bn-editor-content,
+  [data-node-type],
+  .bn-block-content,
+  .bn-block-content-wrapper,
+  .bn-container,
+  .bn-root,
+  .bn-editor-wrapper,
+  .bn-content,
+  .bn-document,
+  .bn-editor-content > * {
+    transition: background-color 300ms ease, color 300ms ease, border-color 300ms ease !important;
+  }
+  
+  /* BlockNote text and inline elements */
+  .bn-inline-content,
+  .bn-text,
+  .bn-inline-content span,
+  .bn-inline-content p {
+    transition: color 300ms ease !important;
   }
  
   /* BlockNote checkbox list item styling - add horizontal padding */
@@ -132,6 +173,260 @@
     margin-right: 10px !important;
     margin-left: 4px !important;
   }
+}
+
+/* BlockNote formatting toolbar background */
+.bn-toolbar.bn-formatting-toolbar {
+  background: #F2F2E9 !important;
+  border-radius: 0.75rem !important;
+  padding: 0.5rem !important;
+  gap: 0.25rem !important;
+}
+.dark .bn-toolbar.bn-formatting-toolbar {
+  background: #242424 !important;
+}
+
+/* BlockNote toolbar buttons - match custom toolbar style */
+.bn-toolbar.bn-formatting-toolbar button.bn-button,
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root,
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root {
+  background-color: #F0F0E0 !important;
+  border: 1px solid #D0D0C0 !important;
+  border-radius: 0.375rem !important;
+  color: #1f2937 !important;
+  width: 2rem !important;
+  height: 2rem !important;
+  min-width: 2rem !important;
+  min-height: 2rem !important;
+  padding: 0 !important;
+  transition: all 200ms ease !important;
+}
+
+.bn-toolbar.bn-formatting-toolbar button.bn-button:hover,
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root:hover,
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root:hover {
+  background-color: #D8D8C8 !important;
+  border-color: #C0C0B0 !important;
+}
+
+/* Active/pressed button state */
+.bn-toolbar.bn-formatting-toolbar button.bn-button[aria-pressed="true"],
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root[aria-pressed="true"],
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root[aria-pressed="true"],
+.bn-toolbar.bn-formatting-toolbar button.bn-button[data-selected="true"],
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root[data-selected="true"],
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root[data-selected="true"] {
+  background-color: #C8C8B8 !important;
+  border-color: #B8B8A8 !important;
+}
+
+/* Dark mode BlockNote toolbar buttons */
+.dark .bn-toolbar.bn-formatting-toolbar button.bn-button,
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root,
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root {
+  background-color: #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
+  color: #e5e5e5 !important;
+}
+
+.dark .bn-toolbar.bn-formatting-toolbar button.bn-button:hover,
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root:hover,
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root:hover {
+  background-color: #333333 !important;
+  border-color: #444444 !important;
+}
+
+.dark .bn-toolbar.bn-formatting-toolbar button.bn-button[aria-pressed="true"],
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root[aria-pressed="true"],
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root[aria-pressed="true"],
+.dark .bn-toolbar.bn-formatting-toolbar button.bn-button[data-selected="true"],
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root[data-selected="true"],
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root[data-selected="true"] {
+  background-color: #3a3a3a !important;
+  border-color: #4a4a4a !important;
+}
+
+/* Disabled button state */
+.bn-toolbar.bn-formatting-toolbar button.bn-button[data-disabled="true"],
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root[data-disabled="true"],
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root[data-disabled="true"],
+.bn-toolbar.bn-formatting-toolbar button.bn-button:disabled,
+.bn-toolbar.bn-formatting-toolbar .mantine-ActionIcon-root:disabled,
+.bn-toolbar.bn-formatting-toolbar button.mantine-ActionIcon-root:disabled {
+  opacity: 0.5 !important;
+  cursor: not-allowed !important;
+}
+
+/* Dropdown button (Heading/Paragraph selector) - match custom toolbar style */
+.bn-toolbar.bn-formatting-toolbar button.mantine-Button-root,
+.bn-toolbar.bn-formatting-toolbar .mantine-Button-root {
+  background-color: #F0F0E0 !important;
+  border: 1px solid #D0D0C0 !important;
+  border-radius: 0.375rem !important;
+  color: #1f2937 !important;
+  height: 2rem !important;
+  padding: 0 0.75rem !important;
+  transition: all 200ms ease !important;
+}
+
+.bn-toolbar.bn-formatting-toolbar button.mantine-Button-root:hover,
+.bn-toolbar.bn-formatting-toolbar .mantine-Button-root:hover {
+  background-color: #D8D8C8 !important;
+  border-color: #C0C0B0 !important;
+}
+
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-Button-root,
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-Button-root {
+  background-color: #2a2a2a !important;
+  border: 1px solid #3a3a3a !important;
+  color: #e5e5e5 !important;
+}
+
+.dark .bn-toolbar.bn-formatting-toolbar button.mantine-Button-root:hover,
+.dark .bn-toolbar.bn-formatting-toolbar .mantine-Button-root:hover {
+  background-color: #333333 !important;
+  border-color: #444444 !important;
+}
+
+/* BlockNote dropdown menus - match custom toolbar style */
+.mantine-Menu-dropdown,
+.mantine-Menu-dropdown[role="menu"],
+.bn-select,
+.mantine-Menu-dropdown[data-menu-dropdown="true"] {
+  background: #F2F2E9 !important;
+  border: 1px solid #E0E0D0 !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  padding: 0.25rem !important;
+  z-index: 10000 !important;
+}
+
+/* BlockNote menu items */
+.mantine-Menu-item,
+.mantine-Menu-item[role="menuitem"] {
+  background-color: transparent !important;
+  border-radius: 0.375rem !important;
+  color: #1f2937 !important;
+  padding: 0.5rem 0.75rem !important;
+  transition: all 200ms ease !important;
+}
+
+.mantine-Menu-item:hover,
+.mantine-Menu-item[role="menuitem"]:hover {
+  background-color: #D8D8C8 !important;
+}
+
+.dark .mantine-Menu-dropdown,
+.dark .mantine-Menu-dropdown[role="menu"],
+.dark .bn-select,
+.dark .mantine-Menu-dropdown[data-menu-dropdown="true"] {
+  background: #242424 !important;
+  border: 1px solid #3a3a3a !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .mantine-Menu-item,
+.dark .mantine-Menu-item[role="menuitem"] {
+  color: #e5e5e5 !important;
+}
+
+.dark .mantine-Menu-item:hover,
+.dark .mantine-Menu-item[role="menuitem"]:hover {
+  background-color: #333333 !important;
+}
+
+/* BlockNote new block dropdown (slash command menu) - match toolbar theme */
+.bn-suggestion-menu,
+.bn-command-menu,
+.bn-suggestion-menu-container,
+[data-suggestion-menu],
+.mantine-Menu-dropdown:has(.bn-suggestion-menu),
+.mantine-Popover-dropdown:has(.bn-suggestion-menu) {
+  background: #F2F2E9 !important;
+  border: 1px solid #E0E0D0 !important;
+  border-radius: 0.5rem !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+  padding: 0.5rem !important;
+  z-index: 10000 !important;
+}
+
+/* BlockNote suggestion menu items */
+.bn-suggestion-menu-item,
+.bn-command-menu-item,
+[data-suggestion-menu-item],
+.mantine-Menu-item:has(.bn-suggestion-menu-item) {
+  background-color: transparent !important;
+  border-radius: 0.375rem !important;
+  color: #1f2937 !important;
+  padding: 0.5rem 0.75rem !important;
+  transition: all 200ms ease !important;
+}
+
+.bn-suggestion-menu-item:hover,
+.bn-command-menu-item:hover,
+[data-suggestion-menu-item]:hover,
+.mantine-Menu-item:has(.bn-suggestion-menu-item):hover {
+  background-color: #D8D8C8 !important;
+}
+
+/* BlockNote suggestion menu item when selected */
+.bn-suggestion-menu-item[data-selected="true"],
+.bn-command-menu-item[data-selected="true"],
+[data-suggestion-menu-item][data-selected="true"] {
+  background-color: #C8C8B8 !important;
+}
+
+/* BlockNote suggestion menu item icons */
+.bn-suggestion-menu-item-icon,
+.bn-command-menu-item-icon {
+  color: #1f2937 !important;
+}
+
+/* BlockNote suggestion menu item labels */
+.bn-suggestion-menu-item-label,
+.bn-command-menu-item-label {
+  color: #1f2937 !important;
+}
+
+.dark .bn-suggestion-menu,
+.dark .bn-command-menu,
+.dark .bn-suggestion-menu-container,
+.dark [data-suggestion-menu],
+.dark .mantine-Menu-dropdown:has(.bn-suggestion-menu),
+.dark .mantine-Popover-dropdown:has(.bn-suggestion-menu) {
+  background: #242424 !important;
+  border: 1px solid #3a3a3a !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2) !important;
+}
+
+.dark .bn-suggestion-menu-item,
+.dark .bn-command-menu-item,
+.dark [data-suggestion-menu-item],
+.dark .mantine-Menu-item:has(.bn-suggestion-menu-item) {
+  color: #e5e5e5 !important;
+}
+
+.dark .bn-suggestion-menu-item:hover,
+.dark .bn-command-menu-item:hover,
+.dark [data-suggestion-menu-item]:hover,
+.dark .mantine-Menu-item:has(.bn-suggestion-menu-item):hover {
+  background-color: #333333 !important;
+}
+
+.dark .bn-suggestion-menu-item[data-selected="true"],
+.dark .bn-command-menu-item[data-selected="true"],
+.dark [data-suggestion-menu-item][data-selected="true"] {
+  background-color: #3a3a3a !important;
+}
+
+.dark .bn-suggestion-menu-item-icon,
+.dark .bn-command-menu-item-icon {
+  color: #e5e5e5 !important;
+}
+
+.dark .bn-suggestion-menu-item-label,
+.dark .bn-command-menu-item-label {
+  color: #e5e5e5 !important;
 }
 
     

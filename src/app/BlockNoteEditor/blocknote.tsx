@@ -536,11 +536,13 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
     };
 
     return (
-      <BlockNoteView
-        editor={editor}
-        className="h-full w-full bg-transparent"
-        theme={transparentTheme}
-      />
+      <div className="transition-colors duration-300">
+        <BlockNoteView
+          editor={editor}
+          className="h-full w-full bg-transparent transition-colors duration-300"
+          theme={transparentTheme}
+        />
+      </div>
     );
   }
 );
