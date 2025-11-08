@@ -435,7 +435,8 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
           if (imageRefs.length > 0) {
             console.log("🖼️ [BlockNote] Resolving images:", imageRefs);
 
-            // Load and create Object URLs for all images
+            // Load and create Object URLs for all images FIRST
+            // This ensures images are ready before we update the editor
             const urlMap: { [hash: string]: string } = {};
             for (const hash of imageRefs) {
               try {
@@ -450,20 +451,62 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
               }
             }
 
-            // Clean up old URLs before storing new ones to prevent memory leaks
+            // Store new URLs BEFORE cleaning up old ones
+            // This prevents a race condition where images might be revoked too early
             const oldUrls = Object.values(imageUrlMapRef.current);
-            ImageStorage.revokeImageUrls(oldUrls);
-
-            // Store for cleanup
             imageUrlMapRef.current = urlMap;
 
-            // Replace hash references with Object URLs in content
-            contentToUse = await ImageStorage.replaceRefsWithUrls(
-              initialContent
-            );
+            // Manually replace hash references with Object URLs in content
+            // Use the URLs we just created instead of calling replaceRefsWithUrls
+            // which would call getImageUrl again (even though cached)
+            try {
+              const blocks = JSON.parse(initialContent);
+              const replaceUrlsInBlocks = (blocks: any[]): void => {
+                for (const block of blocks) {
+                  if (block.type === "image" && block.props?.url) {
+                    const url = block.props.url;
+                    if (url.startsWith("indexeddb://")) {
+                      const hash = url.replace("indexeddb://", "");
+                      if (urlMap[hash]) {
+                        block.props.url = urlMap[hash];
+                        console.log(
+                          `🔄 [BlockNote] Replaced hash ${hash} with Object URL`
+                        );
+                      }
+                    }
+                  }
+                  // Recursively process children
+                  if (block.children && Array.isArray(block.children)) {
+                    replaceUrlsInBlocks(block.children);
+                  }
+                }
+              };
+              replaceUrlsInBlocks(blocks);
+              contentToUse = JSON.stringify(blocks);
+            } catch (error) {
+              console.error(
+                "❌ [BlockNote] Failed to replace URLs in content:",
+                error
+              );
+              // Fallback to using replaceRefsWithUrls
+              contentToUse = await ImageStorage.replaceRefsWithUrls(
+                initialContent
+              );
+            }
+
+            // Clean up old URLs AFTER new ones are stored and content is updated
+            // This ensures we don't revoke URLs that might still be needed
+            // revokeImageUrls now also clears the cache entries
+            ImageStorage.revokeImageUrls(oldUrls);
+
             if (process.env.NODE_ENV === "development") {
               console.log("✅ [BlockNote] Images resolved, content updated");
             }
+          } else {
+            // No images in new content, clean up old URLs
+            const oldUrls = Object.values(imageUrlMapRef.current);
+            ImageStorage.revokeImageUrls(oldUrls);
+            imageUrlMapRef.current = {};
           }
 
           // Parse and update editor content
@@ -475,6 +518,10 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
               console.log("🔄 [BlockNote] Replacing editor blocks...");
               editor.replaceBlocks(editor.document, blocks);
               console.log("✅ [BlockNote] Editor content updated");
+
+              // Wait a bit for images to render in the DOM before focusing
+              // This ensures images are visible when switching notes
+              await new Promise((resolve) => setTimeout(resolve, 150));
 
               // Focus the editor after content update (when switching notes)
               if (autoFocus && isInitialized.current) {
@@ -509,18 +556,19 @@ const BlockNoteEditor = forwardRef<BlockNoteEditorRef, BlockNoteEditorProps>(
       updateEditorContent();
     }, [editor, initialContent, autoFocus]);
 
-    // Cleanup image URLs on unmount and when initialContent changes
+    // Cleanup image URLs only on unmount (not on initialContent change)
+    // The cleanup of old URLs is now handled in the update effect above
     useEffect(() => {
       return () => {
-        // Revoke all Object URLs when component unmounts or content changes
+        // Only revoke URLs on component unmount
         const urls = Object.values(imageUrlMapRef.current);
         ImageStorage.revokeImageUrls(urls);
         imageUrlMapRef.current = {};
         if (process.env.NODE_ENV === "development") {
-          console.log("🧹 [BlockNote] Cleaned up image URLs");
+          console.log("🧹 [BlockNote] Cleaned up image URLs on unmount");
         }
       };
-    }, [initialContent]); // Re-cleanup when content changes to prevent leaks
+    }, []); // Empty deps - only run on unmount
 
     // Create a transparent theme based on the current theme
     const baseTheme = theme === "dark" ? darkDefaultTheme : lightDefaultTheme;

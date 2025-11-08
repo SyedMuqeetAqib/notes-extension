@@ -10,6 +10,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -24,6 +30,7 @@ import {
   Upload,
   AlertCircle,
   CheckCircle,
+  Mail,
 } from "lucide-react";
 import * as GoogleDrive from "@/lib/google-drive";
 import type { Note } from "@/lib/google-drive";
@@ -36,6 +43,7 @@ import {
   handleErrorWithToast,
   QuotaManager,
 } from "@/lib/error-handling";
+import { CONTACT_EMAIL, WEBSITE_URL } from "@/lib/constants";
 // Lazy load BlockNoteEditor - it's heavy with BlockNote libraries
 // Load it only when we have an active note to display
 const BlockNoteEditor = dynamic(() => import("./BlockNoteEditor/blocknote"), {
@@ -2084,6 +2092,59 @@ export default function Home() {
             )}
           </div>
           <div className="flex-1 flex justify-end items-center gap-2">
+            {/* Email Dropdown */}
+            <DropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground"
+                    >
+                      <Mail className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="end">
+                  Send Feedback
+                </TooltipContent>
+              </Tooltip>
+              <DropdownMenuContent align="end" className="w-56">
+                <div className="px-2 py-1.5 text-sm font-medium text-muted-foreground border-b">
+                  {CONTACT_EMAIL}
+                </div>
+                <DropdownMenuItem
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(CONTACT_EMAIL);
+                      toast({
+                        title: "Email copied!",
+                        description: `${CONTACT_EMAIL} copied to clipboard.`,
+                      });
+                    } catch (err) {
+                      toast({
+                        variant: "destructive",
+                        title: "Copy failed",
+                        description: "Could not copy email to clipboard.",
+                      });
+                    }
+                  }}
+                >
+                  <Copy className="w-4 h-4 mr-2" />
+                  <span>Copy Email</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => {
+                    window.location.href = `mailto:${CONTACT_EMAIL}`;
+                  }}
+                >
+                  <Mail className="w-4 h-4 mr-2" />
+                  <span>Send Email</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             {/* Status Indicator */}
             <LazyStatusIndicator
               isLoggedIn={isLoggedIn}
@@ -2185,6 +2246,22 @@ export default function Home() {
                           </kbd>{" "}
                           Lists
                         </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-semibold text-sm mb-2">
+                        Links
+                      </div>
+                      <div className="text-muted-foreground">
+                        <a
+                          href={WEBSITE_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 dark:text-blue-400 hover:underline"
+                        >
+                          {WEBSITE_URL}
+                        </a>
                       </div>
                     </div>
                   </div>

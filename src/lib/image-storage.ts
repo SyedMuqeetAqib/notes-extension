@@ -426,7 +426,7 @@ class ImageStorageManager {
    * Find the hash for a given Object URL
    * This is used to convert Object URLs back to hash references
    */
-  private findHashForObjectUrl(objectUrl: string): string | null {
+  findHashForObjectUrl(objectUrl: string): string | null {
     // Check our URL cache first
     for (const [hash, url] of Object.entries(this.urlCache)) {
       if (url === objectUrl) {
@@ -438,12 +438,26 @@ class ImageStorageManager {
 
   /**
    * Revoke Object URLs to free memory
+   * Also removes them from the cache to prevent returning revoked URLs
    */
   revokeImageUrls(urls: string[]): void {
     urls.forEach((url) => {
       if (url && url.startsWith("blob:")) {
         URL.revokeObjectURL(url);
-        console.log("🗑️ [ImageStorage] Revoked Object URL:", url);
+        
+        // Remove from cache to prevent returning revoked URLs
+        // Find the hash for this URL and remove it from cache
+        const hash = this.findHashForObjectUrl(url);
+        if (hash) {
+          delete this.urlCache[hash];
+          if (process.env.NODE_ENV === "development") {
+            console.log(`🗑️ [ImageStorage] Removed ${hash} from cache`);
+          }
+        }
+        
+        if (process.env.NODE_ENV === "development") {
+          console.log("🗑️ [ImageStorage] Revoked Object URL:", url);
+        }
       }
     });
   }
